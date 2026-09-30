@@ -60,15 +60,23 @@ export function createDemoAudioGraph(): AudioGraph {
   const lowAnalyser = createAnalyser(context);
   const midAnalyser = createAnalyser(context);
   const highAnalyser = createAnalyser(context);
+  const fullAnalyser = createAnalyser(context, 4096);
+  fullAnalyser.smoothingTimeConstant = 0;
 
   // Intentionally not connected to `context.destination` — silent by design.
   low.output.connect(lowAnalyser);
   mid.output.connect(midAnalyser);
   high.output.connect(highAnalyser);
 
+  const merged = context.createGain();
+  low.output.connect(merged);
+  mid.output.connect(merged);
+  high.output.connect(merged);
+  merged.connect(fullAnalyser);
+
   return {
     context,
-    analysers: { low: lowAnalyser, mid: midAnalyser, high: highAnalyser },
+    analysers: { low: lowAnalyser, mid: midAnalyser, high: highAnalyser, full: fullAnalyser },
     stop() {
       low.stop();
       mid.stop();

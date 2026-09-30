@@ -51,3 +51,8 @@ export function readBandLevels(analysers: BandAnalysers): BandLevels {
     high: rmsLevel(analysers.high, scratchFor(analysers.high)),
   };
 }
+
+/** Same RMS level calc as `readBandLevels`, for a single analyser (e.g. a full-spectrum one). */
+export function readAnalyserLevel(node: AnalyserLike): number {
+  return rmsLevel(node, scratchFor(node));
+}

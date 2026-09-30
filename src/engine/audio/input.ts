@@ -7,6 +7,11 @@ const MID_LOW_CUTOFF_HZ = 300;
 const MID_HIGH_CUTOFF_HZ = 3000;
 const HIGH_CUTOFF_HZ = 4000;
 
+// PRD 2.3: a wider FFT for usable pitch-class/centroid resolution. No extra
+// analyser smoothing here — the 3-5s smoothing happens on the derived
+// Circumplex point instead (see engine/audio/circumplex.ts).
+const FULL_FFT_SIZE = 4096;
+
 export async function createMicAudioGraph(): Promise<AudioGraph> {
   // PRD 2.1: disable browser correction so we get the raw signal.
   const stream = await navigator.mediaDevices.getUserMedia({
@@ -39,14 +44,17 @@ export async function createMicAudioGraph(): Promise<AudioGraph> {
   const lowAnalyser = createAnalyser(context);
   const midAnalyser = createAnalyser(context);
   const highAnalyser = createAnalyser(context);
+  const fullAnalyser = createAnalyser(context, FULL_FFT_SIZE);
+  fullAnalyser.smoothingTimeConstant = 0;
 
   source.connect(lowFilter).connect(lowAnalyser);
   source.connect(midHighpass).connect(midLowpass).connect(midAnalyser);
   source.connect(highFilter).connect(highAnalyser);
+  source.connect(fullAnalyser);
 
   return {
     context,
-    analysers: { low: lowAnalyser, mid: midAnalyser, high: highAnalyser },
+    analysers: { low: lowAnalyser, mid: midAnalyser, high: highAnalyser, full: fullAnalyser },
     stop() {
       for (const track of stream.getTracks()) track.stop();
       void context.close();

@@ -17,7 +17,7 @@
 | 7 | TUI HUD拡充(音声レベルメーター含む) + コントロールパネル(設定モーダル) | §5.1, §5.2 | ✅ 完了(一部) | `b6677c6` | 2026-09-30 |
 | 8 | 状態のURL共有(Base64クエリパラメータ, `?ui=false`) | §5.3 | ✅ 完了 | `1e57295` | 2026-09-30 |
 | 9 | PWA化(Service Worker, オフライン対応) | §1.3 | ✅ 完了 | `2ea30db` | 2026-09-30 |
-| 10 | OBS/配信連携(ブラウザソース, PiPキャプチャ) | §6 | ⬜ 未着手 | — | — |
+| 10 | OBS/配信連携(ブラウザソース, PiPキャプチャ) | §6 | ✅ 完了 | `16aaff5` | 2026-09-30 |
 
 ## マイルストーン詳細
 
@@ -64,5 +64,11 @@ command-bus方式のエンジンコア(`reduce`純関数 + `Effect`実行)。マ
 
 **申し送り事項:** アイコンは実ブランディング未定のプレースホルダー。`registerType:'prompt'`だが、保留中の更新を適用するUI(`updateSW()`呼び出し)は未実装 — 現状は更新が来ても自動適用されない(次回起動まで待つ形)。設定パネルに「更新を適用」ボタンを追加するのは将来の拡張。
 
-### 10. OBS/配信連携 ⬜
-`?ui=false`でのブラウザソース直接入力、および`canvas.captureStream(60)` → 隠し`<video>` → Picture-in-Picture APIでのOBSウィンドウキャプチャ連携。
+### 10. OBS/配信連携 ✅
+`?ui=false`(Milestone 8)がブラウザソース直接入力パスをカバー済み。追加でPiPキャプチャパス: 設定パネルの「Start PiP capture」ボタンから`canvas.captureStream(60)` → 隠し`<video>` → Picture-in-Picture APIでOBSの軽量ウィンドウキャプチャに対応。
+
+実装中にChrome実機検証で2つの実バグを発見・修正:
+1. `requestPictureInPicture()`はクリックのユーザーアクティベーション猶予内で呼ぶ必要があるが、先に`video.play()`を`await`するとその猶予を失い`NotAllowedError`になる → `play()`を`await`せずにPiPリクエストを呼ぶよう修正。
+2. `requestPictureInPicture()`はvideoのメタデータ読み込み済みも要求する(`InvalidStateError`)が、クリックハンドラ内では間に合わない → 隠しvideoをページ読み込み時に先行生成・再生開始(ミュート付き自動再生はジェスチャー不要)しておき、ボタンクリック時には同期的にPiPリクエストのみ行う構成に変更。
+
+Chrome実機で確認: `document.pictureInPictureElement`が設定されPiPが実際にアクティブ化、`exitPictureInPicture()`で正常終了することを確認。

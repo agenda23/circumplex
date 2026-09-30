@@ -50,24 +50,44 @@ const FRAGMENT_SHADER = /* glsl */ `
     vec3 seedOffset = vec3(sin(lfoPhase), cos(lfoPhase * 0.7), sin(lfoPhase * 1.3)) * 0.6;
 
     float scale = 1.0 + uLow * 0.5;
-    // Mid drives both how deep the surface warps AND how busy the noise
-    // texture is (frequency), so louder mid reads as more detail, not just
-    // a deeper dent.
+
+    // Four base forms, one per Circumplex mood corner, bilinear-blended by
+    // (valence, arousal) so the SILHOUETTE itself changes with the music's
+    // mood, not just a size pulse: calm(+V-A)=organic blob, excited(+V+A)
+    // =torus, tense(-V+A)=spiky octahedron, sad(-V-A)=heavy rounded box.
+    // A weighted sum of SDFs isn't a mathematically exact distance field,
+    // but at each pure corner it reduces to the exact primitive, and the
+    // blend zones in between are smooth enough for raymarching -- a common
+    // trade-off for stylized "field morphing" over correctness.
+    float wArousal = clamp(uArousal * 0.5 + 0.5, 0.0, 1.0);
+    float wValence = clamp(uValence * 0.5 + 0.5, 0.0, 1.0);
+    float wExcited = wValence * wArousal;
+    float wTense = (1.0 - wValence) * wArousal;
+    float wCalm = wValence * (1.0 - wArousal);
+    float wSad = (1.0 - wValence) * (1.0 - wArousal);
+
+    // Mid drives both how deep the "organic" pair (blob/torus) warps AND how
+    // busy the noise texture is (frequency), so louder mid reads as more
+    // detail, not just a deeper dent. The geometric pair (octa/box) stays
+    // clean by contrast -- gives each mood a distinct character.
     float warpFreq = 1.4 + uMid * 1.4;
     float blobDisp = fbm(p * warpFreq + seedOffset, uFbmOctaves) * (0.15 + uMid * 0.9);
+
     float blob = sdSphere(p / scale, 1.0) * scale - blobDisp;
 
     vec3 pt = p;
     pt.xy *= rot2(0.6);
-    float torus = sdTorus(pt, vec2(1.15, 0.32));
+    float torus = sdTorus(pt, vec2(1.15, 0.32)) - blobDisp * 0.6;
 
-    // Morph is primarily audio-reactive (arousal + spectral flux/onsets),
-    // not just a slow LFO -- a calm passage stays blob-like, an energetic
-    // or busy one pulls toward the torus. The LFO term is now only a small
-    // secondary drift so long sets still don't repeat exactly.
-    float arousalTerm = clamp(uArousal * 0.5 + 0.5, 0.0, 1.0);
-    float morph = clamp(0.15 + arousalTerm * 0.45 + uFlux * 0.35 + 0.1 * sin(lfoPhase * 0.5), 0.0, 1.0);
-    float d = smin(blob, torus, 0.35 + morph * 0.5);
+    vec3 po = p;
+    po.xy *= rot2(uTime * 0.3);
+    float octa = sdOctahedron(po / scale, 1.25) * scale;
+
+    vec3 pb = p;
+    pb.xz *= rot2(0.5);
+    float box = sdRoundBox(pb / scale, vec3(0.8), 0.22) * scale;
+
+    float d = blob * wCalm + torus * wExcited + octa * wTense + box * wSad;
 
     // High band + flux: visible surface ripple/glitch detail, per PRD §2.2's
     // "edge glow/particle" role for the high band (stand-in until a real

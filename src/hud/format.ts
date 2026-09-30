@@ -1,4 +1,5 @@
 import type { EngineState } from '../engine/types';
+import { moodLabel } from './mood';
 
 export interface HudCorners {
   topLeft: string;
@@ -20,7 +21,8 @@ export function formatHud(state: EngineState): HudCorners {
   const { levels, circumplex, features, scaling } = state;
   const status = state.status === 'error' ? `ERROR: ${state.error}` : state.status.toUpperCase();
 
-  const topLeft = `STATUS: ${status}\nV ${circumplex.valence.toFixed(2)} A ${circumplex.arousal.toFixed(2)}\ncentroid ${features.centroid.toFixed(0)}Hz flat ${features.flatness.toFixed(2)} flux ${features.flux.toFixed(3)}`;
+  const mood = moodLabel(circumplex.valence, circumplex.arousal);
+  const topLeft = `STATUS: ${status} | MOOD: ${mood}\nV ${circumplex.valence.toFixed(2)} A ${circumplex.arousal.toFixed(2)}\ncentroid ${features.centroid.toFixed(0)}Hz flat ${features.flatness.toFixed(2)} flux ${features.flux.toFixed(3)}`;
 
   const topRight = `FPS: ${state.fps.toFixed(0)}\nSCALING: ${scaling.pixelRatio.toFixed(2)}x(${scaling.level})`;
 

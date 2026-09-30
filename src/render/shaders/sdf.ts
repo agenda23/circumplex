@@ -10,6 +10,16 @@ export const SDF_PRIMITIVES = /* glsl */ `
     return length(q) - t.y;
   }
 
+  float sdRoundBox(vec3 p, vec3 b, float r) {
+    vec3 q = abs(p) - b;
+    return length(max(q, 0.0)) + min(max(q.x, max(q.y, q.z)), 0.0) - r;
+  }
+
+  float sdOctahedron(vec3 p, float s) {
+    p = abs(p);
+    return (p.x + p.y + p.z - s) * 0.57735027;
+  }
+
   // Polynomial smooth min (iq): blends two SDFs by k instead of a hard min().
   float smin(float a, float b, float k) {
     float h = clamp(0.5 + 0.5 * (b - a) / k, 0.0, 1.0);

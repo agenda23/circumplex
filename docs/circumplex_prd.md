@@ -12,7 +12,7 @@
 *   一般ユーザー (URLで共有されるインタラクティブなジェネレーターとして)
 
 **1.3. 動作環境・デプロイ**
-*   **ホスティング:** Cloudflare Pages 等を利用した静的サイト (PWA対応)。SPA構成（React + React Three Fiber想定）。
+*   **ホスティング:** Cloudflare Pages 等を利用した静的サイト (PWA対応)。SPA構成（TypeScript + Three.js。Reactおよび React Three Fiber は不採用 — 描画コアはUber Shader + フルスクリーンクアッド1枚のゲームループが本体であり、React/R3Fの宣言的レンダリングの恩恵が薄い一方、長尺運用でのFPS監視・動的解像度制御と再レンダリング機構が衝突するリスクがあるため）。ビルドは Vite を使用。
 *   **対応デバイス:** 
     *   PC (Google Chrome 最新版 推奨)
     *   iOS (iPadOS Safari) - ライブ運用・ジェネレーター用途として

@@ -1,0 +1,15 @@
+# Reference project (cloned locally for UI/UX reference only, not part of this project)
+ref/
+
+# Node / build
+node_modules/
+dist/
+dist-ssr/
+*.local
+
+# Editor
+.vscode/*
+!.vscode/extensions.json
+
+# OS
+.DS_Store

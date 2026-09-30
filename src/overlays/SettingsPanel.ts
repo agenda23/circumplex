@@ -7,6 +7,8 @@ export interface SettingsPanelOptions {
   uiVisible: boolean;
   /** Called after any persisted setting changes, so the caller can sync the URL. */
   onSettingsChange?: () => void;
+  /** PRD §6: mirror the canvas into a floating PiP window for OBS window capture. */
+  onStartPip: () => Promise<void>;
 }
 
 /**
@@ -72,6 +74,18 @@ export class SettingsPanel {
     scalingRow.appendChild(autoScaleCheckbox);
     scalingRow.appendChild(scalingLabel);
     panel.appendChild(scalingRow);
+
+    const pipRow = document.createElement('div');
+    pipRow.className = 'row';
+    const pipBtn = document.createElement('button');
+    pipBtn.textContent = 'Start PiP capture (for OBS)';
+    pipBtn.addEventListener('click', () => {
+      this.options.onStartPip().catch((err: unknown) => {
+        console.error('[Circumplex] PiP capture failed:', err);
+      });
+    });
+    pipRow.appendChild(pipBtn);
+    panel.appendChild(pipRow);
 
     this.container.appendChild(panel);
 

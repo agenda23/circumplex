@@ -7,6 +7,7 @@ import { bindKeyboard } from './input/keyboard';
 import { WakeLockController } from './system/WakeLockController';
 import { SettingsPanel } from './overlays/SettingsPanel';
 import { buildSearchWithSettings, isUiVisible, parseSettingsFromSearch } from './state/urlState';
+import { createPipVideo, requestPip } from './system/pipCapture';
 
 function requireEl(id: string): HTMLElement {
   const el = document.getElementById(id);
@@ -24,6 +25,11 @@ scene.resize(window.innerWidth, window.innerHeight);
 
 const engine = new Engine();
 const autoScaler = new AutoScaler();
+
+// PRD §6: prepared eagerly (muted autoplay needs no gesture) so its
+// metadata is long loaded by the time the settings panel's PiP button is
+// clicked -- see system/pipCapture.ts for why this can't happen lazily.
+const pipVideo = createPipVideo(canvas);
 
 // PRD §5.3: shareable state + ?ui=false clean/OBS mode.
 const uiVisible = isUiVisible(window.location.search);
@@ -48,6 +54,7 @@ const settings = new SettingsPanel(requireEl('settings'), {
     const newSearch = buildSearchWithSettings(window.location.search, { autoScalingEnabled: autoScaler.enabled });
     history.replaceState(null, '', `${window.location.pathname}?${newSearch}${window.location.hash}`);
   },
+  onStartPip: () => requestPip(pipVideo),
 });
 
 const wakeLock = new WakeLockController();

@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { Engine } from './engine/Engine';
-import { UberShaderStub } from './render/UberShaderStub';
+import { UberShader } from './render/UberShader';
 import { Hud } from './hud/Hud';
 import { bindKeyboard } from './input/keyboard';
 
@@ -8,9 +8,10 @@ const canvas = document.createElement('canvas');
 document.body.prepend(canvas);
 
 const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
-renderer.setSize(window.innerWidth, window.innerHeight);
 
-const scene = new UberShaderStub();
+const scene = new UberShader(renderer);
+scene.resize(window.innerWidth, window.innerHeight);
+
 const engine = new Engine();
 
 const hudEl = document.getElementById('hud');
@@ -20,7 +21,7 @@ const hud = new Hud(hudEl);
 bindKeyboard((envelope) => engine.dispatch(envelope));
 
 window.addEventListener('resize', () => {
-  renderer.setSize(window.innerWidth, window.innerHeight);
+  scene.resize(window.innerWidth, window.innerHeight);
 });
 
 let lastTime = performance.now();
@@ -33,8 +34,8 @@ function tick(now: number): void {
 
   engine.tick(fps);
   const state = engine.getState();
-  scene.setLevels(state.levels);
-  scene.render(renderer);
+  scene.setAudio(state);
+  scene.render();
   hud.update(state);
 
   requestAnimationFrame(tick);

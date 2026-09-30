@@ -6,6 +6,7 @@ import { Hud } from './hud/Hud';
 import { bindKeyboard } from './input/keyboard';
 import { WakeLockController } from './system/WakeLockController';
 import { SettingsPanel } from './overlays/SettingsPanel';
+import { buildSearchWithSettings, isUiVisible, parseSettingsFromSearch } from './state/urlState';
 
 function requireEl(id: string): HTMLElement {
   const el = document.getElementById(id);
@@ -24,6 +25,11 @@ scene.resize(window.innerWidth, window.innerHeight);
 const engine = new Engine();
 const autoScaler = new AutoScaler();
 
+// PRD §5.3: shareable state + ?ui=false clean/OBS mode.
+const uiVisible = isUiVisible(window.location.search);
+autoScaler.enabled = parseSettingsFromSearch(window.location.search).autoScalingEnabled;
+if (!uiVisible) document.body.classList.add('ui-hidden');
+
 const hud = new Hud({
   topLeft: requireEl('hud-top-left'),
   topRight: requireEl('hud-top-right'),
@@ -33,9 +39,14 @@ const hud = new Hud({
 
 const settings = new SettingsPanel(requireEl('settings'), {
   autoScaler,
+  uiVisible,
   onSelectMicDevice: (deviceId) => {
     engine.dispatch({ t: performance.now(), source: 'keyboard', cmd: { type: 'session.start', input: 'mic', deviceId } });
     void wakeLock.acquire();
+  },
+  onSettingsChange: () => {
+    const newSearch = buildSearchWithSettings(window.location.search, { autoScalingEnabled: autoScaler.enabled });
+    history.replaceState(null, '', `${window.location.pathname}?${newSearch}${window.location.hash}`);
   },
 });
 

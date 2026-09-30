@@ -3,6 +3,10 @@ import type { AutoScaler } from '../render/AutoScaler';
 export interface SettingsPanelOptions {
   onSelectMicDevice: (deviceId: string) => void;
   autoScaler: AutoScaler;
+  /** PRD §5.3: a clean/OBS session (`?ui=false`) shouldn't be interactively reconfigurable. */
+  uiVisible: boolean;
+  /** Called after any persisted setting changes, so the caller can sync the URL. */
+  onSettingsChange?: () => void;
 }
 
 /**
@@ -61,6 +65,7 @@ export class SettingsPanel {
     autoScaleCheckbox.checked = this.options.autoScaler.enabled;
     autoScaleCheckbox.addEventListener('change', () => {
       this.options.autoScaler.enabled = autoScaleCheckbox.checked;
+      this.options.onSettingsChange?.();
     });
     const scalingLabel = document.createElement('label');
     scalingLabel.textContent = 'Auto-scaling enabled';
@@ -84,6 +89,7 @@ export class SettingsPanel {
   }
 
   toggle(): void {
+    if (!this.options.uiVisible) return;
     if (this.open) this.close();
     else this.show();
   }

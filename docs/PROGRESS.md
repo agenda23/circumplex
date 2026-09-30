@@ -16,7 +16,7 @@
 | 6 | スリープ回避(Wake Lock) | §4.3 | ✅ 完了 | `f8ab66f` | 2026-09-30 |
 | 7 | TUI HUD拡充(音声レベルメーター含む) + コントロールパネル(設定モーダル) | §5.1, §5.2 | ✅ 完了(一部) | `b6677c6` | 2026-09-30 |
 | 8 | 状態のURL共有(Base64クエリパラメータ, `?ui=false`) | §5.3 | ✅ 完了 | `1e57295` | 2026-09-30 |
-| 9 | PWA化(Service Worker, オフライン対応) | §1.3 | ⬜ 未着手 | — | — |
+| 9 | PWA化(Service Worker, オフライン対応) | §1.3 | ✅ 完了 | `2ea30db` | 2026-09-30 |
 | 10 | OBS/配信連携(ブラウザソース, PiPキャプチャ) | §6 | ⬜ 未着手 | — | — |
 
 ## マイルストーン詳細
@@ -59,8 +59,10 @@ command-bus方式のエンジンコア(`reduce`純関数 + `Effect`実行)。マ
 
 **申し送り事項:** 永続化対象は現状1項目のみ。今後マニュアル・カラー/エフェクトオーバーライド等が追加された際は`PersistedSettings`型を拡張する。
 
-### 9. PWA化 ⬜
-Cloudflare Pages等での静的ホスティングを見据えたPWA対応(Service Worker、マニフェスト、オフラインキャッシュ)。`ref/age-vd`の`vite-plugin-pwa`構成が参考になる(ただしアイコン等アセットは別途用意が必要)。
+### 9. PWA化 ✅
+`vite-plugin-pwa`を`ref/age-vd`と同様の構成(`registerType: 'prompt'`、workboxプリキャッシュ + `navigateFallback`)で導入。アイコン素材が無かったため、`zlib`のみで手書きしたPNGエンコーダ(新規依存追加なし)でプレースホルダー(単色正方形)のicon-192/512/maskable-512/apple-touch-iconを生成 — Valence/Arousalの重みやベクタースコープの色と同じ「正直なプレースホルダーとして明記し、後で差し替える」方針。Chrome実機で確認: `npm run build`後、manifestが3アイコン付きで解決し、previewサーバーを完全に停止してもService Workerのプリキャッシュからアプリが機能することを確認(検証中に別プロジェクト由来の古いService Workerがlocalhost:4173を掴んでいるのを発見し、退避のため`unregister`する一幕もあった)。
+
+**申し送り事項:** アイコンは実ブランディング未定のプレースホルダー。`registerType:'prompt'`だが、保留中の更新を適用するUI(`updateSW()`呼び出し)は未実装 — 現状は更新が来ても自動適用されない(次回起動まで待つ形)。設定パネルに「更新を適用」ボタンを追加するのは将来の拡張。
 
 ### 10. OBS/配信連携 ⬜
 `?ui=false`でのブラウザソース直接入力、および`canvas.captureStream(60)` → 隠し`<video>` → Picture-in-Picture APIでのOBSウィンドウキャプチャ連携。

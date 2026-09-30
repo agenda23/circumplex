@@ -17,6 +17,8 @@ export class Engine {
   private readonly featureClient = new FeatureWorkerClient();
   private freqScratch: Float32Array<ArrayBuffer> | null = null;
   private lastFeatureTime = performance.now();
+  private vectorScratchL: Float32Array<ArrayBuffer> | null = null;
+  private vectorScratchR: Float32Array<ArrayBuffer> | null = null;
 
   constructor() {
     this.featureClient.onResults(({ features, circumplex }) => {
@@ -42,6 +44,24 @@ export class Engine {
       this.dispatch({ t: performance.now(), source: 'system', cmd: { type: 'levels.update', levels } });
       this.submitFeatures(this.audioGraph);
     }
+  }
+
+  /** Raw L/R time-domain samples for vector synthesis (PRD §3.2) -- deliberately
+   * bypasses the command/state system, same reasoning as feature extraction:
+   * this is a per-frame render input, not small serializable app state. */
+  getVectorSamples(): { left: Float32Array; right: Float32Array } | null {
+    if (!this.audioGraph) return null;
+    const { vectorL, vectorR } = this.audioGraph.analysers;
+
+    if (!this.vectorScratchL || this.vectorScratchL.length !== vectorL.fftSize) {
+      this.vectorScratchL = new Float32Array(vectorL.fftSize);
+    }
+    if (!this.vectorScratchR || this.vectorScratchR.length !== vectorR.fftSize) {
+      this.vectorScratchR = new Float32Array(vectorR.fftSize);
+    }
+    vectorL.getFloatTimeDomainData(this.vectorScratchL);
+    vectorR.getFloatTimeDomainData(this.vectorScratchR);
+    return { left: this.vectorScratchL, right: this.vectorScratchR };
   }
 
   private submitFeatures(graph: AudioGraph): void {

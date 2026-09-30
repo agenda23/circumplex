@@ -131,6 +131,10 @@ const FRAGMENT_SHADER = /* glsl */ `
 `;
 
 const CENTROID_NORM_HZ = 4000;
+// PRD §3.2 vector synthesis: must match the vector analysers' fftSize
+// (engine/audio/{input,synth}.ts) since samples map 1:1 to line vertices.
+const VECTOR_SAMPLE_COUNT = 512;
+const VECTOR_SCALE = 0.6;
 
 function clamp01(v: number): number {
   return Math.min(1, Math.max(0, v));
@@ -159,6 +163,9 @@ export class UberShader {
   private readonly composer: EffectComposer;
   private readonly bloomPass: UnrealBloomPass;
   private readonly material: THREE.ShaderMaterial;
+  private readonly camera: THREE.OrthographicCamera;
+  private readonly vectorGeometry: THREE.BufferGeometry;
+  private readonly vectorPositions: Float32Array<ArrayBuffer>;
   private readonly startTime = performance.now();
   private readonly devicePixelRatioCap = Math.min(window.devicePixelRatio || 1, 2);
   private width = 1;
@@ -185,11 +192,26 @@ export class UberShader {
     });
 
     const scene = new THREE.Scene();
-    const camera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
+    this.camera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
     scene.add(new THREE.Mesh(new THREE.PlaneGeometry(2, 2), this.material));
 
+    this.vectorPositions = new Float32Array(VECTOR_SAMPLE_COUNT * 3);
+    this.vectorGeometry = new THREE.BufferGeometry();
+    this.vectorGeometry.setAttribute('position', new THREE.BufferAttribute(this.vectorPositions, 3));
+    const vectorMaterial = new THREE.LineBasicMaterial({
+      color: 0x8fffe0,
+      transparent: true,
+      opacity: 0.5,
+      blending: THREE.AdditiveBlending,
+      depthTest: false,
+      depthWrite: false,
+    });
+    const vectorLine = new THREE.Line(this.vectorGeometry, vectorMaterial);
+    vectorLine.frustumCulled = false;
+    scene.add(vectorLine);
+
     this.composer = new EffectComposer(renderer);
-    this.composer.addPass(new RenderPass(scene, camera));
+    this.composer.addPass(new RenderPass(scene, this.camera));
     this.bloomPass = new UnrealBloomPass(new THREE.Vector2(1, 1), 0.55, 0.4, 0.65);
     this.composer.addPass(this.bloomPass);
     this.composer.addPass(new OutputPass());
@@ -206,6 +228,19 @@ export class UberShader {
     u.uCentroidNorm!.value = clamp01(state.features.centroid / CENTROID_NORM_HZ);
     u.uRms!.value = clamp01(state.features.rms);
     u.uTime!.value = (performance.now() - this.startTime) / 1000;
+  }
+
+  /** Vector synthesis (PRD §3.2): L/R time-domain samples as an XY scope trace. */
+  setVectorScope(left: Float32Array, right: Float32Array): void {
+    const n = Math.min(left.length, right.length, VECTOR_SAMPLE_COUNT);
+    for (let i = 0; i < n; i++) {
+      this.vectorPositions[i * 3] = left[i]! * VECTOR_SCALE;
+      this.vectorPositions[i * 3 + 1] = right[i]! * VECTOR_SCALE;
+      this.vectorPositions[i * 3 + 2] = 0;
+    }
+    const position = this.vectorGeometry.getAttribute('position') as THREE.BufferAttribute;
+    position.needsUpdate = true;
+    this.vectorGeometry.setDrawRange(0, n);
   }
 
   resize(width: number, height: number): void {
@@ -234,6 +269,16 @@ export class UberShader {
     this.composer.setSize(this.width, this.height);
     this.bloomPass.setSize(this.width, this.height);
     this.material.uniforms.uResolution!.value.set(this.width, this.height);
+
+    // The fullscreen quad's vertex shader bypasses the camera entirely (its
+    // `gl_Position` is already clip-space), so this only affects the vector
+    // scope Line, which uses the normal Three.js transform pipeline.
+    const aspect = this.width / this.height;
+    this.camera.left = -aspect;
+    this.camera.right = aspect;
+    this.camera.top = 1;
+    this.camera.bottom = -1;
+    this.camera.updateProjectionMatrix();
   }
 
   render(): void {

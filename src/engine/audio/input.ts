@@ -12,6 +12,10 @@ const HIGH_CUTOFF_HZ = 4000;
 // Circumplex point instead (see engine/audio/circumplex.ts).
 const FULL_FFT_SIZE = 4096;
 
+// PRD 3.2: vector synthesis (L/R phase -> XY mapping). Small FFT is enough
+// for a smooth scope trace without shipping excess data per frame.
+const VECTOR_FFT_SIZE = 512;
+
 export async function createMicAudioGraph(): Promise<AudioGraph> {
   // PRD 2.1: disable browser correction so we get the raw signal.
   const stream = await navigator.mediaDevices.getUserMedia({
@@ -47,6 +51,15 @@ export async function createMicAudioGraph(): Promise<AudioGraph> {
   const fullAnalyser = createAnalyser(context, FULL_FFT_SIZE);
   fullAnalyser.smoothingTimeConstant = 0;
 
+  const vectorL = createAnalyser(context, VECTOR_FFT_SIZE);
+  const vectorR = createAnalyser(context, VECTOR_FFT_SIZE);
+  vectorL.smoothingTimeConstant = 0;
+  vectorR.smoothingTimeConstant = 0;
+  const splitter = context.createChannelSplitter(2);
+  source.connect(splitter);
+  splitter.connect(vectorL, 0);
+  splitter.connect(vectorR, 1);
+
   source.connect(lowFilter).connect(lowAnalyser);
   source.connect(midHighpass).connect(midLowpass).connect(midAnalyser);
   source.connect(highFilter).connect(highAnalyser);
@@ -54,7 +67,7 @@ export async function createMicAudioGraph(): Promise<AudioGraph> {
 
   return {
     context,
-    analysers: { low: lowAnalyser, mid: midAnalyser, high: highAnalyser, full: fullAnalyser },
+    analysers: { low: lowAnalyser, mid: midAnalyser, high: highAnalyser, full: fullAnalyser, vectorL, vectorR },
     stop() {
       for (const track of stream.getTracks()) track.stop();
       void context.close();

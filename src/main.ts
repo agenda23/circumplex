@@ -45,6 +45,8 @@ function tick(now: number): void {
   engine.tick(fps);
   const state = engine.getState();
   scene.setAudio(state);
+  const vector = engine.getVectorSamples();
+  if (vector) scene.setVectorScope(vector.left, vector.right);
   scene.render();
   hud.update(state);
 

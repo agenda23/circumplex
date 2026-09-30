@@ -68,15 +68,34 @@ export function createDemoAudioGraph(): AudioGraph {
   mid.output.connect(midAnalyser);
   high.output.connect(highAnalyser);
 
-  const merged = context.createGain();
-  low.output.connect(merged);
-  mid.output.connect(merged);
-  high.output.connect(merged);
-  merged.connect(fullAnalyser);
+  // Pan each band differently so the demo signal has real L/R phase
+  // differences too -- otherwise there'd be nothing for the vector
+  // synthesis (Lissajous) view to show outside real mic input.
+  const pannerLow = context.createStereoPanner();
+  pannerLow.pan.value = -0.6;
+  const pannerMid = context.createStereoPanner();
+  pannerMid.pan.value = 0.0;
+  const pannerHigh = context.createStereoPanner();
+  pannerHigh.pan.value = 0.6;
+
+  const stereoBus = context.createGain();
+  low.output.connect(pannerLow).connect(stereoBus);
+  mid.output.connect(pannerMid).connect(stereoBus);
+  high.output.connect(pannerHigh).connect(stereoBus);
+  stereoBus.connect(fullAnalyser);
+
+  const vectorL = createAnalyser(context, 512);
+  const vectorR = createAnalyser(context, 512);
+  vectorL.smoothingTimeConstant = 0;
+  vectorR.smoothingTimeConstant = 0;
+  const splitter = context.createChannelSplitter(2);
+  stereoBus.connect(splitter);
+  splitter.connect(vectorL, 0);
+  splitter.connect(vectorR, 1);
 
   return {
     context,
-    analysers: { low: lowAnalyser, mid: midAnalyser, high: highAnalyser, full: fullAnalyser },
+    analysers: { low: lowAnalyser, mid: midAnalyser, high: highAnalyser, full: fullAnalyser, vectorL, vectorR },
     stop() {
       low.stop();
       mid.stop();

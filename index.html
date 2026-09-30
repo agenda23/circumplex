@@ -8,11 +8,59 @@
     <style>
       html, body { margin: 0; height: 100%; background: #000; overflow: hidden; touch-action: none; overscroll-behavior: none; }
       canvas { display: block; touch-action: none; }
-      #hud { position: fixed; inset: 0; color: #cfe; font: 12px/1.5 ui-monospace, Menlo, Consolas, monospace; white-space: pre; pointer-events: none; z-index: 5; }
+
+      .hud-corner {
+        position: fixed;
+        color: #cfe;
+        font: 12px/1.5 ui-monospace, Menlo, Consolas, monospace;
+        white-space: pre;
+        pointer-events: none;
+        z-index: 5;
+        text-shadow: 0 0 4px rgba(0, 0, 0, 0.8);
+      }
+      #hud-top-left { top: 8px; left: 8px; }
+      #hud-top-right { top: 8px; right: 8px; text-align: right; }
+      #hud-bottom-left { bottom: 8px; left: 8px; }
+      #hud-bottom-right { bottom: 8px; right: 8px; text-align: right; }
+
+      #settings {
+        position: fixed;
+        inset: 0;
+        display: none;
+        align-items: center;
+        justify-content: center;
+        background: rgba(0, 0, 0, 0.7);
+        z-index: 10;
+        font: 13px/1.6 ui-monospace, Menlo, Consolas, monospace;
+        color: #dff;
+      }
+      #settings.open { display: flex; }
+      #settings .panel {
+        background: #0a1210;
+        border: 1px solid #2a4a44;
+        padding: 20px 24px;
+        min-width: 320px;
+      }
+      #settings h2 { margin: 0 0 12px; font-size: 14px; color: #8fffe0; }
+      #settings label { display: block; margin: 10px 0 4px; }
+      #settings select, #settings button {
+        font: inherit;
+        color: inherit;
+        background: #12201d;
+        border: 1px solid #2a4a44;
+        padding: 4px 8px;
+      }
+      #settings button { cursor: pointer; }
+      #settings .row { display: flex; align-items: center; gap: 8px; margin: 10px 0; }
+      #settings .close { float: right; }
     </style>
   </head>
   <body>
-    <div id="hud"></div>
+    <div id="hud-top-left" class="hud-corner"></div>
+    <div id="hud-top-right" class="hud-corner"></div>
+    <div id="hud-bottom-left" class="hud-corner"></div>
+    <div id="hud-bottom-right" class="hud-corner"></div>
+    <div id="settings"></div>
     <script type="module" src="/src/main.ts"></script>
   </body>
 </html>

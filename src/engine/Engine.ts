@@ -82,7 +82,7 @@ export class Engine {
   private runEffect(effect: Effect): void {
     switch (effect.type) {
       case 'audio.start':
-        this.startAudio(effect.input);
+        this.startAudio(effect.input, effect.deviceId);
         break;
       case 'audio.stop':
         this.audioGraph?.stop();
@@ -91,11 +91,11 @@ export class Engine {
     }
   }
 
-  private startAudio(input: 'demo' | 'mic'): void {
+  private startAudio(input: 'demo' | 'mic', deviceId?: string): void {
     this.audioGraph?.stop();
     this.audioGraph = null;
 
-    const graphPromise = input === 'demo' ? Promise.resolve(createDemoAudioGraph()) : createMicAudioGraph();
+    const graphPromise = input === 'demo' ? Promise.resolve(createDemoAudioGraph()) : createMicAudioGraph(deviceId);
 
     graphPromise
       .then((graph) => {

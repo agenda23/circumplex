@@ -5,6 +5,13 @@ import { AutoScaler } from './render/AutoScaler';
 import { Hud } from './hud/Hud';
 import { bindKeyboard } from './input/keyboard';
 import { WakeLockController } from './system/WakeLockController';
+import { SettingsPanel } from './overlays/SettingsPanel';
+
+function requireEl(id: string): HTMLElement {
+  const el = document.getElementById(id);
+  if (!el) throw new Error(`#${id} element missing from index.html`);
+  return el;
+}
 
 const canvas = document.createElement('canvas');
 document.body.prepend(canvas);
@@ -17,18 +24,32 @@ scene.resize(window.innerWidth, window.innerHeight);
 const engine = new Engine();
 const autoScaler = new AutoScaler();
 
-const hudEl = document.getElementById('hud');
-if (!hudEl) throw new Error('#hud element missing from index.html');
-const hud = new Hud(hudEl);
+const hud = new Hud({
+  topLeft: requireEl('hud-top-left'),
+  topRight: requireEl('hud-top-right'),
+  bottomLeft: requireEl('hud-bottom-left'),
+  bottomRight: requireEl('hud-bottom-right'),
+});
+
+const settings = new SettingsPanel(requireEl('settings'), {
+  autoScaler,
+  onSelectMicDevice: (deviceId) => {
+    engine.dispatch({ t: performance.now(), source: 'keyboard', cmd: { type: 'session.start', input: 'mic', deviceId } });
+    void wakeLock.acquire();
+  },
+});
 
 const wakeLock = new WakeLockController();
-bindKeyboard((envelope) => {
-  engine.dispatch(envelope);
-  // Enter/M are the only keys bindKeyboard handles, and both mean "start
-  // playing" -- request from here so we're still inside the synchronous
-  // user-gesture call stack the Wake Lock API requires.
-  void wakeLock.acquire();
-});
+bindKeyboard(
+  (envelope) => {
+    engine.dispatch(envelope);
+    // Enter/M are the only keys bindKeyboard handles, and both mean "start
+    // playing" -- request from here so we're still inside the synchronous
+    // user-gesture call stack the Wake Lock API requires.
+    void wakeLock.acquire();
+  },
+  () => settings.isOpen(),
+);
 
 window.addEventListener('resize', () => {
   scene.resize(window.innerWidth, window.innerHeight);

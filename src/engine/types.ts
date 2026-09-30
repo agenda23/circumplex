@@ -55,7 +55,7 @@ export function createInitialState(): EngineState {
 }
 
 export type Command =
-  | { type: 'session.start'; input: AudioSourceKind }
+  | { type: 'session.start'; input: AudioSourceKind; deviceId?: string }
   | { type: 'session.stop' }
   | { type: 'levels.update'; levels: BandLevels }
   | { type: 'circumplex.update'; circumplex: CircumplexPoint; features: MirFeatures }
@@ -71,4 +71,4 @@ export interface Envelope {
   cmd: Command;
 }
 
-export type Effect = { type: 'audio.start'; input: AudioSourceKind } | { type: 'audio.stop' };
+export type Effect = { type: 'audio.start'; input: AudioSourceKind; deviceId?: string } | { type: 'audio.stop' };

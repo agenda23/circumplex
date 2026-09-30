@@ -5,7 +5,7 @@ export function reduce(state: EngineState, cmd: Command): [EngineState, Effect[]
     case 'session.start':
       return [
         { ...state, status: 'starting', input: cmd.input, error: null },
-        [{ type: 'audio.start', input: cmd.input }],
+        [{ type: 'audio.start', input: cmd.input, deviceId: cmd.deviceId }],
       ];
 
     case 'session.stop':

@@ -16,7 +16,7 @@ const FULL_FFT_SIZE = 4096;
 // for a smooth scope trace without shipping excess data per frame.
 const VECTOR_FFT_SIZE = 512;
 
-export async function createMicAudioGraph(): Promise<AudioGraph> {
+export async function createMicAudioGraph(deviceId?: string): Promise<AudioGraph> {
   // PRD 2.1: disable browser correction so we get the raw signal.
   const stream = await navigator.mediaDevices.getUserMedia({
     audio: {
@@ -24,6 +24,7 @@ export async function createMicAudioGraph(): Promise<AudioGraph> {
       noiseSuppression: false,
       autoGainControl: false,
       channelCount: 2,
+      ...(deviceId ? { deviceId: { exact: deviceId } } : {}),
     },
   });
 

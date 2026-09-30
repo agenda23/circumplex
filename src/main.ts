@@ -4,6 +4,7 @@ import { UberShader } from './render/UberShader';
 import { AutoScaler } from './render/AutoScaler';
 import { Hud } from './hud/Hud';
 import { bindKeyboard } from './input/keyboard';
+import { WakeLockController } from './system/WakeLockController';
 
 const canvas = document.createElement('canvas');
 document.body.prepend(canvas);
@@ -20,7 +21,14 @@ const hudEl = document.getElementById('hud');
 if (!hudEl) throw new Error('#hud element missing from index.html');
 const hud = new Hud(hudEl);
 
-bindKeyboard((envelope) => engine.dispatch(envelope));
+const wakeLock = new WakeLockController();
+bindKeyboard((envelope) => {
+  engine.dispatch(envelope);
+  // Enter/M are the only keys bindKeyboard handles, and both mean "start
+  // playing" -- request from here so we're still inside the synchronous
+  // user-gesture call stack the Wake Lock API requires.
+  void wakeLock.acquire();
+});
 
 window.addEventListener('resize', () => {
   scene.resize(window.innerWidth, window.innerHeight);

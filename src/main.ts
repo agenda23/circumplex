@@ -1,4 +1,8 @@
 import * as THREE from 'three';
+import { Engine } from './engine/Engine';
+import { UberShaderStub } from './render/UberShaderStub';
+import { Hud } from './hud/Hud';
+import { bindKeyboard } from './input/keyboard';
 
 const canvas = document.createElement('canvas');
 document.body.prepend(canvas);
@@ -6,27 +10,34 @@ document.body.prepend(canvas);
 const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
 renderer.setSize(window.innerWidth, window.innerHeight);
 
-const scene = new THREE.Scene();
-const camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 100);
-camera.position.z = 3;
+const scene = new UberShaderStub();
+const engine = new Engine();
 
-const mesh = new THREE.Mesh(
-  new THREE.BoxGeometry(),
-  new THREE.MeshBasicMaterial({ color: 0x00ffcc, wireframe: true }),
-);
-scene.add(mesh);
+const hudEl = document.getElementById('hud');
+if (!hudEl) throw new Error('#hud element missing from index.html');
+const hud = new Hud(hudEl);
+
+bindKeyboard((envelope) => engine.dispatch(envelope));
 
 window.addEventListener('resize', () => {
-  camera.aspect = window.innerWidth / window.innerHeight;
-  camera.updateProjectionMatrix();
   renderer.setSize(window.innerWidth, window.innerHeight);
 });
 
-function tick() {
-  mesh.rotation.x += 0.01;
-  mesh.rotation.y += 0.01;
-  renderer.render(scene, camera);
+let lastTime = performance.now();
+let fps = 0;
+
+function tick(now: number): void {
+  const dt = (now - lastTime) / 1000;
+  lastTime = now;
+  if (dt > 0) fps = fps === 0 ? 1 / dt : fps + (1 / dt - fps) * 0.1;
+
+  engine.tick(fps);
+  const state = engine.getState();
+  scene.setLevels(state.levels);
+  scene.render(renderer);
+  hud.update(state);
+
   requestAnimationFrame(tick);
 }
 
-tick();
+requestAnimationFrame(tick);

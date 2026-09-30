@@ -1,6 +1,6 @@
-# CLAUDE.md
+# AGENTS.md
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository. It mirrors `AGENTS.md` — keep the two in sync when either changes.
+This file provides guidance to AI coding agents when working with code in this repository. It mirrors `CLAUDE.md` — keep the two in sync when either changes.
 
 ## Commands
 
@@ -17,7 +17,7 @@ Single test file: `npx vitest run test/foo.test.ts`; single test case: add `-t "
 
 ## Progress tracking
 
-`docs/PROGRESS.md` tracks the milestone breakdown of the PRD and what's done vs. not started. **Check it before starting new work** (to see what's already built and what a milestone depends on) **and update it after committing a milestone** (status, commit hash, completion date). Use `EnterPlanMode` to design each milestone before implementing it — this repo's non-trivial decisions (React/R3F rejection, the Web Worker feature pipeline, the Valence/Arousal heuristic) were all worked out that way, and the plan file's rationale is often more useful later than the code alone.
+`docs/PROGRESS.md` tracks the milestone breakdown of the PRD and what's done vs. not started. **Check it before starting new work** (to see what's already built and what a milestone depends on) **and update it after committing a milestone** (status, commit hash, completion date). Plan each milestone (design, tradeoffs, file list) before implementing it — this repo's non-trivial decisions (React/R3F rejection, the Web Worker feature pipeline, the Valence/Arousal heuristic) were all worked out that way, and the rationale is often more useful later than the code alone.
 
 ## Stack
 

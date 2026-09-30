@@ -10,7 +10,7 @@
 |---|---|---|---|---|---|
 | 1 | エンジン基盤(command bus) + 音声帯域パイプライン + 最小限の反応描画 | §2.1, §2.2 | ✅ 完了 | `89585dc` | 2026-09-30 |
 | 2 | MIR特徴抽出 + Circumplex(Valence/Arousal)推定 | §2.3 | ✅ 完了 | `5b88a1b` | 2026-09-30 |
-| 3 | 本Uber Shader(SDF/Raymarching, HSL/Oklch色マッピング, LFOドリフト) | §3 | ⬜ 未着手 | — | — |
+| 3 | 本Uber Shader(SDF/Raymarching, Oklch色マッピング, LFOドリフト) | §3 | ✅ 完了(一部) | `8d583f4` | 2026-09-30 |
 | 4 | 動的処理量調整(FPS監視 + 解像度/エフェクト自動調整) | §4.2 | ⬜ 未着手 | — | — |
 | 5 | スリープ回避(Wake Lock) | §4.3 | ⬜ 未着手 | — | — |
 | 6 | TUI HUD拡充 + コントロールパネル(設定モーダル) | §5.1, §5.2 | ⬜ 未着手 | — | — |
@@ -32,8 +32,10 @@ command-bus方式のエンジンコア(`reduce`純関数 + `Effect`実行)。マ
 
 主要ファイル: `src/engine/audio/{features,circumplex,features.worker,featureWorkerClient}.ts`
 
-### 3. 本Uber Shader ⬜
-現在の`UberShaderStub`(リングの仮描画)を、PRD §3の本来の表現に置き換える: Raymarching/SDFによるソリッドな3D構造、ベクターシンセシス(L/R位相のXY座標マッピング)、HSL/Oklch色空間でのHue(中域ピッチ+Circumplex極角)/Saturation(倍音+Circumplex半径)/Lightness(RMS)マッピング、極低周波LFOによる長尺運用向けの色相・ノイズシードドリフト。`state.circumplex`と`state.levels`を消費する。
+### 3. 本Uber Shader ✅(一部)
+`UberShaderStub`(リングの仮描画)を、Raymarching/SDFベースの本描画(`UberShader`)に置き換えた。sphere-tracingコア、noise-displacedブロブとトーラスをuniform経由でsmooth-minブレンド(Uber Shaderのクロスフェード方式の実証)、low→スケール/pulse、mid→ドメインワープ変形、high→リムライト強度、Oklch色空間でのHue(Circumplex極角+スペクトル重心)/Saturation(Circumplex半径+harmonic richness)/Lightness(RMS)マッピング、~0.01Hz LFOによる色相・ノイズシードドリフト、UnrealBloomPass。Chrome実機で確認: 形状が音声反応し、回転・モーフし続けることを確認。
+
+**申し送り事項:** ベクターシンセシス(L/R位相のXY座標マッピング)はスコープ外 — 現在の音声パイプラインは`AnalyserNode`がモノラルにダウンミックスするため、真のステレオ位相取得には`ChannelSplitterNode`での左右分離が別途必要(音声パイプライン側の変更)。今後のフォローアップ課題。Bloom/モザイクのFPS反応化はMilestone 4。SDF形状は現状ブロブ+トーラスの2種のみ(将来拡張可能)。
 
 ### 4. 動的処理量調整 ⬜
 過去120フレーム程度の移動平均FPSを監視し、閾値(例: 50fps)を下回ったら`renderer.setPixelRatio`を動的に下げ(最小0.5)、それでも解決しなければUber Shader内の重い処理(フラクタル反復数、高品質AA)を自動オフ。安定すれば復帰。

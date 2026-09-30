@@ -35,6 +35,7 @@ const FRAGMENT_SHADER = /* glsl */ `
   uniform float uHarmonicRichness;
   uniform float uCentroidNorm;
   uniform float uRms;
+  uniform float uFlux;
   uniform int uMaxSteps;
   uniform int uFbmOctaves;
 
@@ -48,20 +49,32 @@ const FRAGMENT_SHADER = /* glsl */ `
     float lfoPhase = uTime * ${LFO_HZ.toFixed(4)} * ${TAU.toFixed(8)};
     vec3 seedOffset = vec3(sin(lfoPhase), cos(lfoPhase * 0.7), sin(lfoPhase * 1.3)) * 0.6;
 
-    float scale = 1.0 + uLow * 0.35;
-    float blobDisp = fbm(p * 1.8 + seedOffset, uFbmOctaves) * (0.25 + uMid * 0.6);
+    float scale = 1.0 + uLow * 0.5;
+    // Mid drives both how deep the surface warps AND how busy the noise
+    // texture is (frequency), so louder mid reads as more detail, not just
+    // a deeper dent.
+    float warpFreq = 1.4 + uMid * 1.4;
+    float blobDisp = fbm(p * warpFreq + seedOffset, uFbmOctaves) * (0.15 + uMid * 0.9);
     float blob = sdSphere(p / scale, 1.0) * scale - blobDisp;
 
     vec3 pt = p;
     pt.xy *= rot2(0.6);
     float torus = sdTorus(pt, vec2(1.15, 0.32));
 
-    float morph = 0.5 + 0.5 * sin(lfoPhase * 0.5);
-    float d = smin(blob, torus, 0.5 + morph * 0.4);
+    // Morph is primarily audio-reactive (arousal + spectral flux/onsets),
+    // not just a slow LFO -- a calm passage stays blob-like, an energetic
+    // or busy one pulls toward the torus. The LFO term is now only a small
+    // secondary drift so long sets still don't repeat exactly.
+    float arousalTerm = clamp(uArousal * 0.5 + 0.5, 0.0, 1.0);
+    float morph = clamp(0.15 + arousalTerm * 0.45 + uFlux * 0.35 + 0.1 * sin(lfoPhase * 0.5), 0.0, 1.0);
+    float d = smin(blob, torus, 0.35 + morph * 0.5);
 
-    // High band: subtle surface ripple, a stand-in for "edge glow/particle
-    // detail" per PRD §2.2 until a real particle system exists.
-    d += sin(p.x * 14.0 + p.y * 11.0 + p.z * 9.0 + uTime * 3.0) * uHigh * 0.015;
+    // High band + flux: visible surface ripple/glitch detail, per PRD §2.2's
+    // "edge glow/particle" role for the high band (stand-in until a real
+    // particle system exists) -- amplitude was previously far too subtle
+    // (0.015) to read at this object scale.
+    float rippleAmp = uHigh * 0.06 + uFlux * 0.08;
+    d += sin(p.x * 14.0 + p.y * 11.0 + p.z * 9.0 + uTime * 3.0) * rippleAmp;
 
     return d;
   }
@@ -113,17 +126,28 @@ const FRAGMENT_SHADER = /* glsl */ `
       // Hue: Circumplex polar angle (primary) + a centroid-derived offset as
       // a stand-in for "mid-band dominant pitch" (PRD §3.3) -- real pitch
       // detection isn't built yet, centroid is the closest feature we have.
-      float hue = atan(uArousal, uValence) / ${TAU.toFixed(8)} + 0.5;
-      hue += uCentroidNorm * 0.15;
-      hue = fract(hue + uTime * ${LFO_HZ.toFixed(4)} * 0.3);
+      float baseHue = atan(uArousal, uValence) / ${TAU.toFixed(8)} + 0.5;
+      baseHue += uCentroidNorm * 0.15;
+      baseHue = fract(baseHue + uTime * ${LFO_HZ.toFixed(4)} * 0.3);
+
+      // Small position-based hue jitter so the surface reads as organic
+      // color variation instead of one flat tint across the whole shape.
+      float hueJitter = (fbm(p * 3.0 + vec3(7.3, 1.1, 4.2), 2) - 0.5) * 0.08;
+      float hue = fract(baseHue + hueJitter);
 
       float radius = clamp(length(vec2(uValence, uArousal)), 0.0, 1.0);
-      float oChroma = clamp(0.06 + radius * 0.10 + uHarmonicRichness * 0.08, 0.0, 0.16);
+      float oChroma = clamp(0.05 + radius * 0.20 + uHarmonicRichness * 0.16, 0.0, 0.32);
       float lightness = clamp(0.35 + uRms * 0.5, 0.0, 0.9);
 
       vec3 base = oklchToLinearSrgb(lightness, oChroma, hue * ${TAU.toFixed(8)});
       color = base * (0.25 + diffuse * 0.75);
-      color += base * fresnel * (0.6 + uHigh * 1.5);
+
+      // Rim/fresnel gets its own hue offset so edges read as a distinct
+      // shade from the core -- a "two-tone" look without a literal second
+      // color parameter.
+      float rimHue = fract(hue + 0.08 + uHigh * 0.1);
+      vec3 rim = oklchToLinearSrgb(clamp(lightness + 0.15, 0.0, 0.95), oChroma, rimHue * ${TAU.toFixed(8)});
+      color += rim * fresnel * (0.6 + uHigh * 1.5);
     }
 
     gl_FragColor = vec4(color, 1.0);
@@ -131,10 +155,16 @@ const FRAGMENT_SHADER = /* glsl */ `
 `;
 
 const CENTROID_NORM_HZ = 4000;
+const FLUX_NORM = 0.05;
 // PRD §3.2 vector synthesis: must match the vector analysers' fftSize
 // (engine/audio/{input,synth}.ts) since samples map 1:1 to line vertices.
 const VECTOR_SAMPLE_COUNT = 512;
-const VECTOR_SCALE = 0.6;
+const VECTOR_SCALE_MIN = 0.35;
+const VECTOR_SCALE_GAIN = 0.9;
+// Z uses the left channel again, phase-shifted by this many samples, so the
+// trace becomes a genuine 3D curve (not flat) instead of duplicating X or Y.
+const VECTOR_Z_SHIFT = VECTOR_SAMPLE_COUNT / 4;
+const VECTOR_SPIN_RAD_PER_SEC = 0.25;
 
 function clamp01(v: number): number {
   return Math.min(1, Math.max(0, v));
@@ -166,6 +196,8 @@ export class UberShader {
   private readonly camera: THREE.OrthographicCamera;
   private readonly vectorGeometry: THREE.BufferGeometry;
   private readonly vectorPositions: Float32Array<ArrayBuffer>;
+  private readonly vectorLine: THREE.Line;
+  private vectorScale = VECTOR_SCALE_MIN;
   private readonly startTime = performance.now();
   private readonly devicePixelRatioCap = Math.min(window.devicePixelRatio || 1, 2);
   private width = 1;
@@ -186,6 +218,7 @@ export class UberShader {
         uHarmonicRichness: { value: 0 },
         uCentroidNorm: { value: 0 },
         uRms: { value: 0 },
+        uFlux: { value: 0 },
         uMaxSteps: { value: RENDER_QUALITY[0]!.maxSteps },
         uFbmOctaves: { value: RENDER_QUALITY[0]!.fbmOctaves },
       },
@@ -206,9 +239,9 @@ export class UberShader {
       depthTest: false,
       depthWrite: false,
     });
-    const vectorLine = new THREE.Line(this.vectorGeometry, vectorMaterial);
-    vectorLine.frustumCulled = false;
-    scene.add(vectorLine);
+    this.vectorLine = new THREE.Line(this.vectorGeometry, vectorMaterial);
+    this.vectorLine.frustumCulled = false;
+    scene.add(this.vectorLine);
 
     this.composer = new EffectComposer(renderer);
     this.composer.addPass(new RenderPass(scene, this.camera));
@@ -227,16 +260,31 @@ export class UberShader {
     u.uHarmonicRichness!.value = clamp01(1 - state.features.flatness);
     u.uCentroidNorm!.value = clamp01(state.features.centroid / CENTROID_NORM_HZ);
     u.uRms!.value = clamp01(state.features.rms);
-    u.uTime!.value = (performance.now() - this.startTime) / 1000;
+    u.uFlux!.value = clamp01(state.features.flux / FLUX_NORM);
+    const time = (performance.now() - this.startTime) / 1000;
+    u.uTime!.value = time;
+
+    // Vector scope: size follows overall loudness (was a fixed constant),
+    // and the whole trace spins in 3D -- a slow constant-speed spin plus a
+    // Circumplex-driven tilt, so its motion isn't just "L/R amplitude" on a
+    // flat plane (a second, independent axis of change per user feedback).
+    this.vectorScale = VECTOR_SCALE_MIN + clamp01(state.features.rms) * VECTOR_SCALE_GAIN;
+    this.vectorLine.rotation.y = time * VECTOR_SPIN_RAD_PER_SEC;
+    this.vectorLine.rotation.x = state.circumplex.arousal * 0.6;
+    this.vectorLine.rotation.z = state.circumplex.valence * 0.3;
   }
 
-  /** Vector synthesis (PRD §3.2): L/R time-domain samples as an XY scope trace. */
+  /** Vector synthesis (PRD §3.2): L/R time-domain samples as a 3D scope trace. */
   setVectorScope(left: Float32Array, right: Float32Array): void {
     const n = Math.min(left.length, right.length, VECTOR_SAMPLE_COUNT);
     for (let i = 0; i < n; i++) {
-      this.vectorPositions[i * 3] = left[i]! * VECTOR_SCALE;
-      this.vectorPositions[i * 3 + 1] = right[i]! * VECTOR_SCALE;
-      this.vectorPositions[i * 3 + 2] = 0;
+      // Z reuses the left channel from VECTOR_Z_SHIFT samples away instead
+      // of duplicating X or Y -- without a third independent audio channel,
+      // this is what turns a flat XY trace into a real 3D curve.
+      const zSample = left[(i + VECTOR_Z_SHIFT) % n]!;
+      this.vectorPositions[i * 3] = left[i]! * this.vectorScale;
+      this.vectorPositions[i * 3 + 1] = right[i]! * this.vectorScale;
+      this.vectorPositions[i * 3 + 2] = zSample * this.vectorScale;
     }
     const position = this.vectorGeometry.getAttribute('position') as THREE.BufferAttribute;
     position.needsUpdate = true;

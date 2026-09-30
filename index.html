@@ -42,21 +42,52 @@
       #settings .panel {
         background: #0a1210;
         border: 1px solid #2a4a44;
+        box-shadow: 0 8px 40px rgba(0, 0, 0, 0.6);
         padding: 20px 24px;
-        min-width: 320px;
+        /* Never wider than the viewport (minus margin) so it can't clip on
+           narrow/tablet screens, but also never grows unreadably wide on
+           large displays. */
+        width: min(440px, calc(100vw - 32px));
+        max-height: min(640px, 85vh);
+        overflow-y: auto;
+        box-sizing: border-box;
       }
       #settings h2 { margin: 0 0 12px; font-size: 14px; color: #8fffe0; }
+      #settings h3 {
+        margin: 18px 0 6px;
+        font-size: 12px;
+        color: #6fd;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+        border-top: 1px solid #1c322e;
+        padding-top: 10px;
+      }
+      #settings h3:first-of-type { border-top: none; padding-top: 0; }
       #settings label { display: block; margin: 10px 0 4px; }
-      #settings select, #settings button {
+      #settings select, #settings button, #settings input[type="range"] {
         font: inherit;
         color: inherit;
         background: #12201d;
         border: 1px solid #2a4a44;
         padding: 4px 8px;
       }
+      #settings input[type="range"] { padding: 0; flex: 1; }
       #settings button { cursor: pointer; }
       #settings .row { display: flex; align-items: center; gap: 8px; margin: 10px 0; }
+      #settings .slider-row label { width: 90px; flex-shrink: 0; margin: 0; }
+      #settings .slider-row .readout { width: 3.5em; text-align: right; }
       #settings .close { float: right; }
+      #settings .shortcuts { margin-top: 6px; }
+      #settings .shortcut-row { display: flex; gap: 10px; margin: 4px 0; }
+      #settings .shortcut-key {
+        width: 70px;
+        flex-shrink: 0;
+        color: #8fffe0;
+        background: #12201d;
+        border: 1px solid #2a4a44;
+        padding: 1px 6px;
+        text-align: center;
+      }
     </style>
   </head>
   <body>

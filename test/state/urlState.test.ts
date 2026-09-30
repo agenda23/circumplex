@@ -5,16 +5,25 @@ import {
   encodeSettings,
   isUiVisible,
   parseSettingsFromSearch,
+  type PersistedSettings,
 } from '../../src/state/urlState';
+
+const DEFAULTS: PersistedSettings = {
+  autoScalingEnabled: true,
+  sensitivity: 1.0,
+  peakNormalize: true,
+  attackMs: 8,
+  releaseMs: 160,
+};
 
 describe('encodeSettings / decodeSettings', () => {
   it('round-trips', () => {
-    const settings = { autoScalingEnabled: false };
+    const settings: PersistedSettings = { ...DEFAULTS, autoScalingEnabled: false, sensitivity: 2.5 };
     expect(decodeSettings(encodeSettings(settings))).toEqual(settings);
   });
 
   it('produces a URL-safe string (no +, /, or = padding)', () => {
-    const encoded = encodeSettings({ autoScalingEnabled: true });
+    const encoded = encodeSettings(DEFAULTS);
     expect(encoded).not.toMatch(/[+/=]/);
   });
 
@@ -26,20 +35,26 @@ describe('encodeSettings / decodeSettings', () => {
     const encoded = btoa(JSON.stringify({ someOtherApp: true })).replace(/=+$/, '');
     expect(decodeSettings(encoded)).toBeNull();
   });
+
+  it('returns null when a field is missing (e.g. an older persisted shape)', () => {
+    const encoded = btoa(JSON.stringify({ autoScalingEnabled: true })).replace(/=+$/, '');
+    expect(decodeSettings(encoded)).toBeNull();
+  });
 });
 
 describe('parseSettingsFromSearch', () => {
   it('falls back to defaults when there is no p param', () => {
-    expect(parseSettingsFromSearch('')).toEqual({ autoScalingEnabled: true });
+    expect(parseSettingsFromSearch('')).toEqual(DEFAULTS);
   });
 
   it('falls back to defaults when p is corrupt', () => {
-    expect(parseSettingsFromSearch('?p=garbage')).toEqual({ autoScalingEnabled: true });
+    expect(parseSettingsFromSearch('?p=garbage')).toEqual(DEFAULTS);
   });
 
   it('reads a valid p param', () => {
-    const encoded = encodeSettings({ autoScalingEnabled: false });
-    expect(parseSettingsFromSearch(`?p=${encoded}`)).toEqual({ autoScalingEnabled: false });
+    const settings: PersistedSettings = { ...DEFAULTS, autoScalingEnabled: false };
+    const encoded = encodeSettings(settings);
+    expect(parseSettingsFromSearch(`?p=${encoded}`)).toEqual(settings);
   });
 });
 
@@ -60,12 +75,13 @@ describe('isUiVisible', () => {
 
 describe('buildSearchWithSettings', () => {
   it('adds a p param to an empty search', () => {
-    const search = buildSearchWithSettings('', { autoScalingEnabled: false });
-    expect(parseSettingsFromSearch(`?${search}`)).toEqual({ autoScalingEnabled: false });
+    const settings: PersistedSettings = { ...DEFAULTS, autoScalingEnabled: false };
+    const search = buildSearchWithSettings('', settings);
+    expect(parseSettingsFromSearch(`?${search}`)).toEqual(settings);
   });
 
   it('preserves an existing ui param while updating p', () => {
-    const search = buildSearchWithSettings('?ui=false&p=old', { autoScalingEnabled: false });
+    const search = buildSearchWithSettings('?ui=false&p=old', DEFAULTS);
     const params = new URLSearchParams(search);
     expect(params.get('ui')).toBe('false');
     expect(params.get('p')).not.toBe('old');

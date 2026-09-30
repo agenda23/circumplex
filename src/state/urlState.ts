@@ -4,17 +4,23 @@
  * `search` string (not `window.location` directly) so they're testable
  * without a browser environment; `main.ts` is the thin wrapper that reads
  * `window.location.search` and calls `history.replaceState`.
- *
- * `PersistedSettings` only has one field today (`autoScalingEnabled`) since
- * that's the only real persisted setting this app has so far -- extend it
- * as more UI parameters (manual color/effect overrides, etc.) are built.
  */
 
 export interface PersistedSettings {
   autoScalingEnabled: boolean;
+  sensitivity: number;
+  peakNormalize: boolean;
+  attackMs: number;
+  releaseMs: number;
 }
 
-const DEFAULT_SETTINGS: PersistedSettings = { autoScalingEnabled: true };
+const DEFAULT_SETTINGS: PersistedSettings = {
+  autoScalingEnabled: true,
+  sensitivity: 1.0,
+  peakNormalize: true,
+  attackMs: 8,
+  releaseMs: 160,
+};
 
 function toBase64Url(json: string): string {
   return btoa(json).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
@@ -27,10 +33,14 @@ function fromBase64Url(b64url: string): string {
 }
 
 function isPersistedSettings(value: unknown): value is PersistedSettings {
+  if (typeof value !== 'object' || value === null) return false;
+  const v = value as Record<string, unknown>;
   return (
-    typeof value === 'object' &&
-    value !== null &&
-    typeof (value as Record<string, unknown>).autoScalingEnabled === 'boolean'
+    typeof v.autoScalingEnabled === 'boolean' &&
+    typeof v.sensitivity === 'number' &&
+    typeof v.peakNormalize === 'boolean' &&
+    typeof v.attackMs === 'number' &&
+    typeof v.releaseMs === 'number'
   );
 }
 

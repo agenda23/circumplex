@@ -33,7 +33,12 @@ const pipVideo = createPipVideo(canvas);
 
 // PRD §5.3: shareable state + ?ui=false clean/OBS mode.
 const uiVisible = isUiVisible(window.location.search);
-autoScaler.enabled = parseSettingsFromSearch(window.location.search).autoScalingEnabled;
+const persisted = parseSettingsFromSearch(window.location.search);
+autoScaler.enabled = persisted.autoScalingEnabled;
+engine.levelEnvelope.sensitivity = persisted.sensitivity;
+engine.levelEnvelope.peakNormalize = persisted.peakNormalize;
+engine.levelEnvelope.attackMs = persisted.attackMs;
+engine.levelEnvelope.releaseMs = persisted.releaseMs;
 if (!uiVisible) document.body.classList.add('ui-hidden');
 
 const hud = new Hud({
@@ -45,13 +50,20 @@ const hud = new Hud({
 
 const settings = new SettingsPanel(requireEl('settings'), {
   autoScaler,
+  levelEnvelope: engine.levelEnvelope,
   uiVisible,
   onSelectMicDevice: (deviceId) => {
     engine.dispatch({ t: performance.now(), source: 'keyboard', cmd: { type: 'session.start', input: 'mic', deviceId } });
     void wakeLock.acquire();
   },
   onSettingsChange: () => {
-    const newSearch = buildSearchWithSettings(window.location.search, { autoScalingEnabled: autoScaler.enabled });
+    const newSearch = buildSearchWithSettings(window.location.search, {
+      autoScalingEnabled: autoScaler.enabled,
+      sensitivity: engine.levelEnvelope.sensitivity,
+      peakNormalize: engine.levelEnvelope.peakNormalize,
+      attackMs: engine.levelEnvelope.attackMs,
+      releaseMs: engine.levelEnvelope.releaseMs,
+    });
     history.replaceState(null, '', `${window.location.pathname}?${newSearch}${window.location.hash}`);
   },
   onStartPip: () => requestPip(pipVideo),

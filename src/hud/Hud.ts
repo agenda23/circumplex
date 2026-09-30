@@ -11,8 +11,8 @@ export interface HudElements {
 export class Hud {
   constructor(private readonly els: HudElements) {}
 
-  update(state: EngineState): void {
-    const corners = formatHud(state);
+  update(state: EngineState, shadeMode = 0): void {
+    const corners = formatHud(state, shadeMode);
     this.els.topLeft.textContent = corners.topLeft;
     this.els.topRight.textContent = corners.topRight;
     this.els.bottomLeft.textContent = corners.bottomLeft;

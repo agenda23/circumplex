@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   createCircumplexSmoother,
   estimateRaw,
+  FLUX_NORM,
   type CircumplexFeatures,
 } from '../../../src/engine/audio/circumplex';
 
@@ -42,6 +43,17 @@ describe('estimateRaw', () => {
 
   it('gives a tonal, concentrated chroma higher valence than a flat/noisy one', () => {
     expect(estimateRaw(loudTonal).valence).toBeGreaterThan(estimateRaw(loudNoisy).valence);
+  });
+
+  it('raises arousal with flux and saturates at FLUX_NORM', () => {
+    const base: CircumplexFeatures = { ...quiet, rms: 0.5, centroid: 2000, flatness: 0.5 };
+    const still = estimateRaw({ ...base, flux: 0 }).arousal;
+    const partial = estimateRaw({ ...base, flux: FLUX_NORM / 2 }).arousal;
+    const full = estimateRaw({ ...base, flux: FLUX_NORM }).arousal;
+    const beyond = estimateRaw({ ...base, flux: FLUX_NORM * 8 }).arousal;
+    expect(partial).toBeGreaterThan(still);
+    expect(full).toBeGreaterThan(partial);
+    expect(beyond).toBeCloseTo(full, 5);
   });
 });
 

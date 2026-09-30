@@ -1,4 +1,5 @@
 import type { EngineState } from '../engine/types';
+import { SHADE_MODES } from '../state/visualFx';
 import { moodLabel } from './mood';
 
 export interface HudCorners {
@@ -17,12 +18,13 @@ export function levelBar(value: number): string {
   return LEVEL_BAR_CHARS[index]!;
 }
 
-export function formatHud(state: EngineState): HudCorners {
+export function formatHud(state: EngineState, shadeMode = 0): HudCorners {
   const { levels, circumplex, features, scaling } = state;
   const status = state.status === 'error' ? `ERROR: ${state.error}` : state.status.toUpperCase();
 
   const mood = moodLabel(circumplex.valence, circumplex.arousal);
-  const topLeft = `STATUS: ${status} | MOOD: ${mood}\nV ${circumplex.valence.toFixed(2)} A ${circumplex.arousal.toFixed(2)}\ncentroid ${features.centroid.toFixed(0)}Hz flat ${features.flatness.toFixed(2)} flux ${features.flux.toFixed(3)}`;
+  const shade = SHADE_MODES.find((mode) => mode.id === shadeMode)?.label ?? SHADE_MODES[0].label;
+  const topLeft = `STATUS: ${status} | MOOD: ${mood}\nSHADE: ${shade}\nV ${circumplex.valence.toFixed(2)} A ${circumplex.arousal.toFixed(2)}\ncentroid ${features.centroid.toFixed(0)}Hz flat ${features.flatness.toFixed(2)} flux ${features.flux.toFixed(3)}`;
 
   const topRight = `FPS: ${state.fps.toFixed(0)}\nSCALING: ${scaling.pixelRatio.toFixed(2)}x(${scaling.level})`;
 

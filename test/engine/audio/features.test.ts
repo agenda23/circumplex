@@ -55,9 +55,22 @@ describe('spectralFlux', () => {
     expect(spectralFlux(spectrum, spectrum)).toBe(0);
   });
 
-  it('is positive when energy increases frame-to-frame', () => {
+  it('is near 1 when a tone appears out of a quiet spectrum', () => {
     const flux = spectralFlux(toneSpectrum(1000, 0), toneSpectrum(1000, -40));
-    expect(flux).toBeGreaterThan(0);
+    expect(flux).toBeGreaterThan(0.9);
+    expect(flux).toBeLessThanOrEqual(1);
+  });
+
+  it('does not shrink when the same onset is padded with silent bins', () => {
+    const prev = new Float32Array([SILENCE_DB, -40]);
+    const curr = new Float32Array([SILENCE_DB, 0]);
+    const prevLong = new Float32Array(2048).fill(SILENCE_DB);
+    const currLong = new Float32Array(2048).fill(SILENCE_DB);
+    prevLong[1] = -40;
+    currLong[1] = 0;
+    const flux = spectralFlux(curr, prev);
+    expect(flux).toBeGreaterThan(0.9);
+    expect(spectralFlux(currLong, prevLong)).toBeCloseTo(flux, 4);
   });
 });
 

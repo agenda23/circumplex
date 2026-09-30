@@ -3,8 +3,14 @@ import { EffectComposer } from 'three/examples/jsm/postprocessing/EffectComposer
 import { RenderPass } from 'three/examples/jsm/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPass.js';
 import { OutputPass } from 'three/examples/jsm/postprocessing/OutputPass.js';
+import { AfterimagePass } from 'three/examples/jsm/postprocessing/AfterimagePass.js';
+import { ShaderPass } from 'three/examples/jsm/postprocessing/ShaderPass.js';
+import { RGBShiftShader } from 'three/examples/jsm/shaders/RGBShiftShader.js';
+import { FLUX_NORM } from '../engine/audio/circumplex';
 import type { EngineState } from '../engine/types';
+import { VECTOR_SCOPE_GAIN_RANGE, type VisualFx } from '../state/visualFx';
 import { NOISE_UTILS, OKLCH_UTILS, SDF_PRIMITIVES } from './shaders/sdf';
+import { FINISH_SHADER } from './shaders/finish';
 
 type AudioState = Pick<EngineState, 'levels' | 'circumplex' | 'features'>;
 
@@ -38,6 +44,7 @@ const FRAGMENT_SHADER = /* glsl */ `
   uniform float uFlux;
   uniform int uMaxSteps;
   uniform int uFbmOctaves;
+  uniform int uShadeMode;
 
   ${SDF_PRIMITIVES}
   ${NOISE_UTILS}
@@ -49,7 +56,15 @@ const FRAGMENT_SHADER = /* glsl */ `
     float lfoPhase = uTime * ${LFO_HZ.toFixed(4)} * ${TAU.toFixed(8)};
     vec3 seedOffset = vec3(sin(lfoPhase), cos(lfoPhase * 0.7), sin(lfoPhase * 1.3)) * 0.6;
 
-    float scale = 1.0 + uLow * 0.5;
+    // Loudest band, with an ease-out: true silence stays on the floor, and
+    // once a band is clearly audible (~0.2) the form is already ~70% size.
+    // Only the last 30% follows peaks, so playback does not scale 1:1.
+    float level = clamp(max(uLow, max(uMid, uHigh)), 0.0, 1.0);
+    float audible = smoothstep(0.015, 0.2, level);
+    float peaks = smoothstep(0.2, 1.0, level);
+    float presence = audible * 0.7 + peaks * 0.3;
+    float breathe = (0.04 * sin(uTime * 0.37) + 0.03 * sin(uTime * 0.71)) * presence;
+    float scale = mix(0.02, 1.45, presence) + breathe;
 
     // Four base forms, one per Circumplex mood corner, bilinear-blended by
     // (valence, arousal) so the SILHOUETTE itself changes with the music's
@@ -68,33 +83,45 @@ const FRAGMENT_SHADER = /* glsl */ `
 
     // Mid drives both how deep the "organic" pair (blob/torus) warps AND how
     // busy the noise texture is (frequency), so louder mid reads as more
-    // detail, not just a deeper dent. The geometric pair (octa/box) stays
-    // clean by contrast -- gives each mood a distinct character.
+    // detail, not just a deeper dent. The geometric pair gets a much weaker
+    // warp (fixed 2 octaves) so those moods stay faceted, but not rigid.
     float warpFreq = 1.4 + uMid * 1.4;
-    float blobDisp = fbm(p * warpFreq + seedOffset, uFbmOctaves) * (0.15 + uMid * 0.9);
+    float blobDisp = fbm(p * warpFreq + seedOffset, uFbmOctaves) * (0.15 + uMid * 0.9) * presence;
+    float geoWarp = fbm(p * 1.1 + seedOffset, 2) * 0.045 * presence;
 
     float blob = sdSphere(p / scale, 1.0) * scale - blobDisp;
 
     vec3 pt = p;
     pt.xy *= rot2(0.6);
-    float torus = sdTorus(pt, vec2(1.15, 0.32)) - blobDisp * 0.6;
+    float torus = sdTorus(pt / scale, vec2(1.15, 0.32)) * scale - blobDisp * 0.6;
 
     vec3 po = p;
     po.xy *= rot2(uTime * 0.3);
-    float octa = sdOctahedron(po / scale, 1.25) * scale;
+    float octa = sdOctahedron(po / scale, 1.25) * scale - geoWarp;
 
     vec3 pb = p;
     pb.xz *= rot2(0.5);
-    float box = sdRoundBox(pb / scale, vec3(0.8), 0.22) * scale;
+    float box = sdRoundBox(pb / scale, vec3(0.8), 0.22) * scale - geoWarp;
 
     float d = blob * wCalm + torus * wExcited + octa * wTense + box * wSad;
 
-    // High band + flux: visible surface ripple/glitch detail, per PRD §2.2's
-    // "edge glow/particle" role for the high band (stand-in until a real
-    // particle system exists) -- amplitude was previously far too subtle
-    // (0.015) to read at this object scale.
-    float rippleAmp = uHigh * 0.06 + uFlux * 0.08;
-    d += sin(p.x * 14.0 + p.y * 11.0 + p.z * 9.0 + uTime * 3.0) * rippleAmp;
+    // High band + flux scale how deep the ridges are. Their shape follows
+    // the sound: centroid sets the spacing (brighter = finer), the low/high
+    // balance turns the direction, and flux folds in a second crossing
+    // ridge on onsets. A very slow drift remains so a held tone doesn't
+    // freeze one grating for the whole set.
+    float rippleAmp = (uHigh * 0.06 + uFlux * 0.08) * presence;
+    float bright = smoothstep(0.05, 0.55, uCentroidNorm);
+    float f1 = mix(5.0, 15.0, bright);
+    float ang = atan(uHigh - uLow, 0.35 + uMid) + uTime * 0.04;
+    vec3 dir1 = vec3(cos(ang), 0.25, sin(ang));
+    float crossAmt = clamp(uFlux, 0.0, 1.0);
+    float ang2 = ang + mix(0.7, 1.7, crossAmt);
+    vec3 dir2 = vec3(-sin(ang2), cos(ang2), 0.2);
+    float f2 = mix(4.0, 12.0, bright);
+    float w2 = 0.15 + crossAmt * 0.55;
+    float ripple = sin(dot(p, dir1) * f1) * (1.0 - w2) + sin(dot(p, dir2) * f2) * w2;
+    d += ripple * rippleAmp;
 
     return d;
   }
@@ -160,14 +187,20 @@ const FRAGMENT_SHADER = /* glsl */ `
       float lightness = clamp(0.35 + uRms * 0.5, 0.0, 0.9);
 
       vec3 base = oklchToLinearSrgb(lightness, oChroma, hue * ${TAU.toFixed(8)});
-      color = base * (0.25 + diffuse * 0.75);
-
-      // Rim/fresnel gets its own hue offset so edges read as a distinct
-      // shade from the core -- a "two-tone" look without a literal second
-      // color parameter.
       float rimHue = fract(hue + 0.08 + uHigh * 0.1);
       vec3 rim = oklchToLinearSrgb(clamp(lightness + 0.15, 0.0, 0.95), oChroma, rimHue * ${TAU.toFixed(8)});
-      color += rim * fresnel * (0.6 + uHigh * 1.5);
+
+      // 0 soft lambert, 1 cel bands, 2 rim light, 3 flat glow.
+      vec3 softCol = base * (0.25 + diffuse * 0.75) + rim * fresnel * (0.6 + uHigh * 1.5);
+      float bands = 0.1 + smoothstep(0.22, 0.32, diffuse) * 0.4 + smoothstep(0.55, 0.68, diffuse) * 0.5;
+      vec3 celCol = base * bands + rim * smoothstep(0.5, 0.62, fresnel);
+      vec3 rimCol = rim * pow(fresnel, 1.2) * (1.1 + uHigh * 1.2);
+      vec3 glowCol = base * (0.9 + diffuse * 0.1);
+
+      if (uShadeMode == 1) color = celCol;
+      else if (uShadeMode == 2) color = rimCol;
+      else if (uShadeMode == 3) color = glowCol;
+      else color = softCol;
     }
 
     gl_FragColor = vec4(color, 1.0);
@@ -175,12 +208,15 @@ const FRAGMENT_SHADER = /* glsl */ `
 `;
 
 const CENTROID_NORM_HZ = 4000;
-const FLUX_NORM = 0.05;
 // PRD §3.2 vector synthesis: must match the vector analysers' fftSize
 // (engine/audio/{input,synth}.ts) since samples map 1:1 to line vertices.
 const VECTOR_SAMPLE_COUNT = 512;
-const VECTOR_SCALE_MIN = 0.35;
-const VECTOR_SCALE_GAIN = 0.9;
+const VECTOR_SCALE_MIN = 0.55;
+const VECTOR_SCALE_GAIN = 1.35;
+/** RGBShiftShader `amount` at chroma = 1 and full high-band/flux drive. */
+const CHROMA_AMOUNT_MAX = 0.008;
+/** Block size in framebuffer pixels once auto-scaling reaches the 0.5 pixel-ratio floor. */
+const PIXELATE_BY_LEVEL = [0, 0, 0, 0, 4, 6, 8];
 // Z uses the left channel again, phase-shifted by this many samples, so the
 // trace becomes a genuine 3D curve (not flat) instead of duplicating X or Y.
 const VECTOR_Z_SHIFT = VECTOR_SAMPLE_COUNT / 4;
@@ -212,12 +248,19 @@ const RENDER_QUALITY: RenderQuality[] = [
 export class UberShader {
   private readonly composer: EffectComposer;
   private readonly bloomPass: UnrealBloomPass;
+  private readonly trailPass: AfterimagePass;
+  private readonly rgbPass: ShaderPass;
+  private readonly finishPass: ShaderPass;
   private readonly material: THREE.ShaderMaterial;
   private readonly camera: THREE.OrthographicCamera;
   private readonly vectorGeometry: THREE.BufferGeometry;
   private readonly vectorPositions: Float32Array<ArrayBuffer>;
   private readonly vectorLine: THREE.Line;
   private vectorScale = VECTOR_SCALE_MIN;
+  /** Multiplier on the Lissajous trace. Settings and Autopilot write this directly. */
+  vectorScopeGain = 1;
+  private post: Pick<VisualFx, 'trail' | 'chroma' | 'crt'> = { trail: 0, chroma: 0, crt: false };
+  private qualityLevel = 0;
   private readonly startTime = performance.now();
   private readonly devicePixelRatioCap = Math.min(window.devicePixelRatio || 1, 2);
   private width = 1;
@@ -241,6 +284,7 @@ export class UberShader {
         uFlux: { value: 0 },
         uMaxSteps: { value: RENDER_QUALITY[0]!.maxSteps },
         uFbmOctaves: { value: RENDER_QUALITY[0]!.fbmOctaves },
+        uShadeMode: { value: 0 },
       },
     });
 
@@ -267,7 +311,23 @@ export class UberShader {
     this.composer.addPass(new RenderPass(scene, this.camera));
     this.bloomPass = new UnrealBloomPass(new THREE.Vector2(1, 1), 0.55, 0.4, 0.65);
     this.composer.addPass(this.bloomPass);
+    this.trailPass = new AfterimagePass(0);
+    this.trailPass.enabled = false;
+    this.composer.addPass(this.trailPass);
+    this.rgbPass = new ShaderPass(RGBShiftShader);
+    this.rgbPass.enabled = false;
+    this.composer.addPass(this.rgbPass);
+    this.finishPass = new ShaderPass(FINISH_SHADER);
+    this.finishPass.uniforms.uRes!.value = new THREE.Vector2(1, 1);
+    this.finishPass.enabled = false;
+    this.composer.addPass(this.finishPass);
     this.composer.addPass(new OutputPass());
+  }
+
+  /** Trail / chroma master / CRT. Pixelation is not a dial — it follows the auto-scaling level. */
+  setPost(post: Pick<VisualFx, 'trail' | 'chroma' | 'crt' | 'shadeMode'>): void {
+    this.post = post;
+    this.material.uniforms.uShadeMode!.value = post.shadeMode;
   }
 
   setAudio(state: AudioState): void {
@@ -288,7 +348,11 @@ export class UberShader {
     // and the whole trace spins in 3D -- a slow constant-speed spin plus a
     // Circumplex-driven tilt, so its motion isn't just "L/R amplitude" on a
     // flat plane (a second, independent axis of change per user feedback).
-    this.vectorScale = VECTOR_SCALE_MIN + clamp01(state.features.rms) * VECTOR_SCALE_GAIN;
+    const scopeGain = Math.min(
+      VECTOR_SCOPE_GAIN_RANGE.max,
+      Math.max(VECTOR_SCOPE_GAIN_RANGE.min, this.vectorScopeGain),
+    );
+    this.vectorScale = (VECTOR_SCALE_MIN + clamp01(state.features.rms) * VECTOR_SCALE_GAIN) * scopeGain;
     this.vectorLine.rotation.y = time * VECTOR_SPIN_RAD_PER_SEC;
     this.vectorLine.rotation.x = state.circumplex.arousal * 0.6;
     this.vectorLine.rotation.z = state.circumplex.valence * 0.3;
@@ -320,6 +384,7 @@ export class UberShader {
   /** Applies a PRD §4.2 auto-scaling level (0 = best quality). */
   setQuality(level: number): { pixelRatio: number } {
     const clamped = Math.min(Math.max(level, 0), RENDER_QUALITY.length - 1);
+    this.qualityLevel = clamped;
     const quality = RENDER_QUALITY[clamped]!;
     const pixelRatio = quality.pixelRatio === 'device' ? this.devicePixelRatioCap : quality.pixelRatio;
 
@@ -337,6 +402,8 @@ export class UberShader {
     this.composer.setSize(this.width, this.height);
     this.bloomPass.setSize(this.width, this.height);
     this.material.uniforms.uResolution!.value.set(this.width, this.height);
+    const pixelRatio = this.renderer.getPixelRatio();
+    (this.finishPass.uniforms.uRes!.value as THREE.Vector2).set(this.width * pixelRatio, this.height * pixelRatio);
 
     // The fullscreen quad's vertex shader bypasses the camera entirely (its
     // `gl_Position` is already clip-space), so this only affects the vector
@@ -350,6 +417,27 @@ export class UberShader {
   }
 
   render(): void {
+    this.applyPost();
     this.composer.render();
+  }
+
+  private applyPost(): void {
+    const trail = this.post.trail;
+    this.trailPass.enabled = trail > 0.001;
+    this.trailPass.damp = trail;
+
+    const high = this.material.uniforms.uHigh!.value as number;
+    const flux = this.material.uniforms.uFlux!.value as number;
+    const amount = this.post.chroma * Math.max(high, flux) * CHROMA_AMOUNT_MAX;
+    this.rgbPass.enabled = amount > 0.0002;
+    this.rgbPass.uniforms.amount!.value = amount;
+    this.rgbPass.uniforms.angle!.value = (this.material.uniforms.uTime!.value as number) * 0.15;
+
+    const pixel = PIXELATE_BY_LEVEL[this.qualityLevel] ?? 0;
+    const crt = this.post.crt ? 1 : 0;
+    this.finishPass.enabled = pixel > 0 || crt > 0;
+    this.finishPass.uniforms.uPixel!.value = pixel;
+    this.finishPass.uniforms.uCrt!.value = crt;
+    this.finishPass.uniforms.uTime!.value = this.material.uniforms.uTime!.value;
   }
 }

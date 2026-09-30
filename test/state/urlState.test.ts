@@ -14,6 +14,12 @@ const DEFAULTS: PersistedSettings = {
   peakNormalize: true,
   attackMs: 8,
   releaseMs: 160,
+  trail: 0,
+  chroma: 0,
+  crt: false,
+  vectorScopeGain: 1,
+  autopilotEnabled: true,
+  shadeMode: 0,
 };
 
 describe('encodeSettings / decodeSettings', () => {
@@ -36,9 +42,14 @@ describe('encodeSettings / decodeSettings', () => {
     expect(decodeSettings(encoded)).toBeNull();
   });
 
-  it('returns null when a field is missing (e.g. an older persisted shape)', () => {
-    const encoded = btoa(JSON.stringify({ autoScalingEnabled: true })).replace(/=+$/, '');
-    expect(decodeSettings(encoded)).toBeNull();
+  it('fills defaults for fields missing from an older payload', () => {
+    const encoded = btoa(JSON.stringify({ autoScalingEnabled: false })).replace(/=+$/, '');
+    expect(decodeSettings(encoded)).toEqual({ ...DEFAULTS, autoScalingEnabled: false });
+  });
+
+  it('clamps visual FX numbers into their slider ranges', () => {
+    const encoded = btoa(JSON.stringify({ ...DEFAULTS, trail: 4, vectorScopeGain: 0 })).replace(/=+$/, '');
+    expect(decodeSettings(encoded)).toMatchObject({ trail: 0.9, vectorScopeGain: 0.2 });
   });
 });
 

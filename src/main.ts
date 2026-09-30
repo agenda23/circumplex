@@ -2,6 +2,9 @@ import * as THREE from 'three';
 import { Engine } from './engine/Engine';
 import { UberShader } from './render/UberShader';
 import { AutoScaler } from './render/AutoScaler';
+import { Autopilot } from './render/Autopilot';
+import { VisualFx } from './state/visualFx';
+import type { PersistedSettings } from './state/urlState';
 import { Hud } from './hud/Hud';
 import { bindKeyboard } from './input/keyboard';
 import { WakeLockController } from './system/WakeLockController';
@@ -25,6 +28,8 @@ scene.resize(window.innerWidth, window.innerHeight);
 
 const engine = new Engine();
 const autoScaler = new AutoScaler();
+const visualFx = new VisualFx();
+const autopilot = new Autopilot();
 
 // PRD §6: prepared eagerly (muted autoplay needs no gesture) so its
 // metadata is long loaded by the time the settings panel's PiP button is
@@ -39,6 +44,13 @@ engine.levelEnvelope.sensitivity = persisted.sensitivity;
 engine.levelEnvelope.peakNormalize = persisted.peakNormalize;
 engine.levelEnvelope.attackMs = persisted.attackMs;
 engine.levelEnvelope.releaseMs = persisted.releaseMs;
+visualFx.trail = persisted.trail;
+visualFx.chroma = persisted.chroma;
+visualFx.crt = persisted.crt;
+visualFx.vectorScopeGain = persisted.vectorScopeGain;
+visualFx.shadeMode = persisted.shadeMode;
+autopilot.enabled = persisted.autopilotEnabled;
+scene.vectorScopeGain = visualFx.vectorScopeGain;
 if (!uiVisible) document.body.classList.add('ui-hidden');
 
 const hud = new Hud({
@@ -48,22 +60,34 @@ const hud = new Hud({
   bottomRight: requireEl('hud-bottom-right'),
 });
 
+function currentSettings(): PersistedSettings {
+  return {
+    autoScalingEnabled: autoScaler.enabled,
+    sensitivity: engine.levelEnvelope.sensitivity,
+    peakNormalize: engine.levelEnvelope.peakNormalize,
+    attackMs: engine.levelEnvelope.attackMs,
+    releaseMs: engine.levelEnvelope.releaseMs,
+    trail: visualFx.trail,
+    chroma: visualFx.chroma,
+    crt: visualFx.crt,
+    vectorScopeGain: visualFx.vectorScopeGain,
+    autopilotEnabled: autopilot.enabled,
+    shadeMode: visualFx.shadeMode,
+  };
+}
+
 const settings = new SettingsPanel(requireEl('settings'), {
   autoScaler,
   levelEnvelope: engine.levelEnvelope,
+  visualFx,
+  autopilot,
   uiVisible,
   onSelectMicDevice: (deviceId) => {
     engine.dispatch({ t: performance.now(), source: 'keyboard', cmd: { type: 'session.start', input: 'mic', deviceId } });
     void wakeLock.acquire();
   },
   onSettingsChange: () => {
-    const newSearch = buildSearchWithSettings(window.location.search, {
-      autoScalingEnabled: autoScaler.enabled,
-      sensitivity: engine.levelEnvelope.sensitivity,
-      peakNormalize: engine.levelEnvelope.peakNormalize,
-      attackMs: engine.levelEnvelope.attackMs,
-      releaseMs: engine.levelEnvelope.releaseMs,
-    });
+    const newSearch = buildSearchWithSettings(window.location.search, currentSettings());
     history.replaceState(null, '', `${window.location.pathname}?${newSearch}${window.location.hash}`);
   },
   onStartPip: () => requestPip(pipVideo),
@@ -103,11 +127,15 @@ function tick(now: number): void {
 
   engine.tick(fps);
   const state = engine.getState();
+  autopilot.update(dt, state.circumplex.arousal, visualFx);
+  scene.vectorScopeGain = visualFx.vectorScopeGain;
+  scene.setPost(visualFx);
   scene.setAudio(state);
   const vector = engine.getVectorSamples();
   if (vector) scene.setVectorScope(vector.left, vector.right);
   scene.render();
-  hud.update(state);
+  hud.update(state, visualFx.shadeMode);
+  settings.refreshVisualFx();
 
   requestAnimationFrame(tick);
 }

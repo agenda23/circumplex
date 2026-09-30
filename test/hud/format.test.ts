@@ -29,6 +29,7 @@ describe('formatHud', () => {
   it('produces all four corners', () => {
     const corners = formatHud(createInitialState());
     expect(corners.topLeft).toContain('STATUS: IDLE');
+    expect(corners.topLeft).toContain('SHADE: Soft');
     expect(corners.topRight).toContain('FPS: 0');
     expect(corners.bottomLeft).toContain('start demo');
     expect(corners.bottomRight).toMatch(/^L. M. H. R.$/u);
@@ -37,5 +38,9 @@ describe('formatHud', () => {
   it('shows the error message when status is error', () => {
     const state = { ...createInitialState(), status: 'error' as const, error: 'boom' };
     expect(formatHud(state).topLeft).toContain('ERROR: boom');
+  });
+
+  it('names the active shading mode', () => {
+    expect(formatHud(createInitialState(), 3).topLeft).toContain('SHADE: Glow');
   });
 });

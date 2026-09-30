@@ -44,15 +44,23 @@ export function spectralFlatness(freqDb: Float32Array<ArrayBufferLike>): number 
   return arithmeticMean > EPS ? geometricMean / arithmeticMean : 0;
 }
 
-/** Half-wave-rectified frame-to-frame energy increase, normalized by bin count. */
+/**
+ * Fraction of this frame's energy that appeared since the previous frame
+ * (half-wave rectified), in 0..1. Dividing by bin count instead made a tone
+ * onset ~1/2048 and the HUD read 0.000 for any real signal. Silent bins
+ * contribute nothing to either sum, so a longer FFT does not shrink the value.
+ */
 export function spectralFlux(freqDb: Float32Array<ArrayBufferLike>, prevFreqDb: Float32Array<ArrayBufferLike> | null): number {
   if (!prevFreqDb || prevFreqDb.length !== freqDb.length) return 0;
-  let sum = 0;
+  let rise = 0;
+  let energy = 0;
   for (let i = 0; i < freqDb.length; i++) {
-    const diff = dbToLinear(freqDb[i]!) - dbToLinear(prevFreqDb[i]!);
-    if (diff > 0) sum += diff;
+    const mag = dbToLinear(freqDb[i]!);
+    energy += mag;
+    const diff = mag - dbToLinear(prevFreqDb[i]!);
+    if (diff > 0) rise += diff;
   }
-  return sum / freqDb.length;
+  return energy > EPS ? rise / energy : 0;
 }
 
 function pitchClass(freqHz: number): number {

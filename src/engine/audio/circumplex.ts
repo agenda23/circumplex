@@ -26,7 +26,12 @@ export const AROUSAL_WEIGHTS = { rms: 0.5, flux: 0.3, centroid: 0.2 };
 export const VALENCE_WEIGHTS = { flatnessInv: 0.5, chromaPeakiness: 0.5 };
 
 const CENTROID_NORM_HZ = 4000;
-const FLUX_NORM = 0.05;
+/**
+ * `spectralFlux` is already a 0..1 energy fraction. This is the fraction that
+ * counts as fully transient for arousal and the shader: a frame where a
+ * quarter of the energy is new. A from-silence hit (flux ≈ 1) still clamps.
+ */
+export const FLUX_NORM = 0.25;
 
 function clamp01(v: number): number {
   return Math.min(1, Math.max(0, v));

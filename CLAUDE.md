@@ -15,6 +15,10 @@ npm run preview    # preview a production build
 
 Single test file: `npx vitest run test/foo.test.ts`; single test case: add `-t "name"`.
 
+## Progress tracking
+
+`docs/PROGRESS.md` tracks the milestone breakdown of the PRD and what's done vs. not started. **Check it before starting new work** (to see what's already built and what a milestone depends on) **and update it after committing a milestone** (status, commit hash, completion date). Use `EnterPlanMode` to design each milestone before implementing it — this repo's non-trivial decisions (React/R3F rejection, the Web Worker feature pipeline, the Valence/Arousal heuristic) were all worked out that way, and the plan file's rationale is often more useful later than the code alone.
+
 ## Stack
 
 TypeScript + Three.js + Vite, no framework. React and React Three Fiber were deliberately rejected: the rendering core is a single Uber Shader driven by a manual render loop with per-frame FPS-based auto-scaling, which gets no benefit from a declarative component tree and risks fighting a reconciler's re-renders. See `docs/circumplex_prd.md` §1.3 for the rationale. Follow the "Reference project" section below for how to structure UI/engine separation without a framework (command bus, plain-DOM overlays, HUD as pure string-formatting functions).

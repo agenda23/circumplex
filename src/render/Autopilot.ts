@@ -7,9 +7,9 @@ import { CHROMA_RANGE, TRAIL_RANGE, type FxParam, type VisualFx } from '../state
  * (trail, chroma, CRT, vector-scope size) and steps the geometry shading
  * mode on its own trigger.
  *
- * Dial changes stay gradual. Shading switches on an arousal-tier change or,
- * if the tier holds, on a 24–50s timer. A manual shading pick is held for
- * MANUAL_HOLD_SEC, same as the other dials.
+ * Trail, chroma, CRT, and scope size snap off or to a strong value so the
+ * change reads. Shading switches on an arousal-tier change or, if the tier
+ * holds, on a 24–50s timer. A manual pick is held for MANUAL_HOLD_SEC.
  */
 
 export const AUTOPILOT_INTERVAL_MIN_SEC = 8;
@@ -21,8 +21,27 @@ export const BURST_DURATION_MAX_SEC = 8;
 export const SHADE_FIRST_SEC = 24;
 export const SHADE_INTERVAL_MIN_SEC = 24;
 export const SHADE_INTERVAL_MAX_SEC = 50;
-const NUDGE_BLEND = 0.55;
 const BURST_RISE_SEC = 0.6;
+
+/** Chance trail or scope size snaps on. Chroma is stricter and lives on its own table. */
+const FX_ON_CHANCE: Record<EnergyTier, number> = {
+  calm: 0.1,
+  drive: 0.32,
+  peak: 0.8,
+};
+
+/** Chroma stays off in calm, a light touch in drive, and strong only at peak. */
+const CHROMA_ON_CHANCE: Record<EnergyTier, number> = {
+  calm: 0,
+  drive: 0.1,
+  peak: 0.75,
+};
+
+const TRAIL_ON = { min: 0.78, max: TRAIL_RANGE.max };
+const CHROMA_MILD = { min: 0.18, max: 0.38 };
+const CHROMA_ON = { min: 0.72, max: CHROMA_RANGE.max };
+const SCOPE_OFF = { min: 0.35, max: 0.55 };
+const SCOPE_ON = { min: 1.6, max: 2.5 };
 
 export type EnergyTier = 'calm' | 'drive' | 'peak';
 
@@ -32,38 +51,15 @@ export function tierFromArousal(arousal: number): EnergyTier {
   return 'drive';
 }
 
-interface NumberBand {
-  min: number;
-  max: number;
-}
-
 interface TierBands {
-  trail: NumberBand;
-  chroma: NumberBand;
   /** Probability of turning CRT on when that dial is the one being nudged. */
   crtOn: number;
-  vectorScopeGain: NumberBand;
 }
 
 const TIERS: Record<EnergyTier, TierBands> = {
-  calm: {
-    trail: { min: 0, max: 0.12 },
-    chroma: { min: 0, max: 0.1 },
-    crtOn: 0.15,
-    vectorScopeGain: { min: 0.7, max: 1.15 },
-  },
-  drive: {
-    trail: { min: 0.08, max: 0.4 },
-    chroma: { min: 0.1, max: 0.45 },
-    crtOn: 0.4,
-    vectorScopeGain: { min: 0.85, max: 1.7 },
-  },
-  peak: {
-    trail: { min: 0.2, max: 0.65 },
-    chroma: { min: 0.25, max: 0.7 },
-    crtOn: 0.6,
-    vectorScopeGain: { min: 1.0, max: 2.2 },
-  },
+  calm: { crtOn: 0.08 },
+  drive: { crtOn: 0.25 },
+  peak: { crtOn: 0.72 },
 };
 
 type DialParam = Exclude<FxParam, 'shade'>;
@@ -142,6 +138,10 @@ export class Autopilot {
     const tier = tierFromArousal(arousal);
     const tierChanged = this.lastTier !== null && this.lastTier !== tier;
     this.lastTier = tier;
+    if (tierChanged && tier !== 'peak' && !this.held('chroma')) {
+      fx.chroma = 0;
+      if (this.burst?.param === 'chroma') this.burst = null;
+    }
     if (this.held('shade')) return;
     if (!tierChanged && this.elapsed < this.nextShadeAt) return;
     this.assignShade(tier, fx);
@@ -171,7 +171,10 @@ export class Autopilot {
     const tier = tierFromArousal(arousal);
 
     if (tier !== 'calm' && !this.burst && this.random() < BURST_CHANCE) {
-      const burstParams = (['trail', 'chroma'] as const).filter((param) => !this.held(param));
+      const burstParams = (['trail', 'chroma'] as const).filter((param) => {
+        if (this.held(param)) return false;
+        return param === 'trail' || tier === 'peak';
+      });
       if (burstParams.length > 0) {
         const param = burstParams[Math.floor(this.random() * burstParams.length)]!;
         this.startBurst(param, fx);
@@ -187,24 +190,34 @@ export class Autopilot {
   }
 
   private nudge(param: DialParam, tier: EnergyTier, fx: VisualFx): void {
-    const band = TIERS[tier];
     if (param === 'crt') {
-      fx.crt = this.random() < band.crtOn;
+      fx.crt = this.random() < TIERS[tier].crtOn;
       return;
     }
-    const range = band[param];
-    const target = range.min + this.random() * (range.max - range.min);
-    const current = fx[param];
-    fx[param] = current + (target - current) * NUDGE_BLEND;
+    const on = this.random() < (param === 'chroma' ? CHROMA_ON_CHANCE[tier] : FX_ON_CHANCE[tier]);
+    if (param === 'vectorScopeGain') {
+      const range = on ? SCOPE_ON : SCOPE_OFF;
+      fx.vectorScopeGain = range.min + this.random() * (range.max - range.min);
+      fx.clamp();
+      return;
+    }
+    if (!on) {
+      fx[param] = 0;
+    } else if (param === 'chroma') {
+      const range = tier === 'peak' ? CHROMA_ON : CHROMA_MILD;
+      fx.chroma = range.min + this.random() * (range.max - range.min);
+    } else {
+      const range = TRAIL_ON;
+      fx.trail = range.min + this.random() * (range.max - range.min);
+    }
     fx.clamp();
   }
 
   private startBurst(param: 'trail' | 'chroma', fx: VisualFx): void {
     const duration =
       BURST_DURATION_MIN_SEC + this.random() * (BURST_DURATION_MAX_SEC - BURST_DURATION_MIN_SEC);
-    const ceiling = param === 'trail' ? Math.min(0.75, TRAIL_RANGE.max) : Math.min(0.65, CHROMA_RANGE.max);
+    const peak = param === 'trail' ? TRAIL_ON.max : CHROMA_ON.max;
     const restore = fx[param];
-    const peak = Math.min(ceiling, restore + 0.35);
     const rise = Math.min(BURST_RISE_SEC, duration * 0.25);
     this.burst = {
       param,

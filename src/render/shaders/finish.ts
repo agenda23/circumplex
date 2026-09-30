@@ -39,10 +39,10 @@ export const FINISH_SHADER = {
       vec3 col = texture2D(tDiffuse, uv).rgb;
       if (uCrt > 0.001) {
         float scan = 0.5 + 0.5 * sin(vUv.y * uRes.y * 3.14159265);
-        col *= 1.0 - 0.22 * scan;
+        col *= 1.0 - 0.4 * scan;
         vec2 c = vUv - 0.5;
-        col *= 1.0 - 0.55 * smoothstep(0.35, 1.05, length(c));
-        col += (hash(vUv * uRes + fract(uTime * 12.0)) - 0.5) * 0.04;
+        col *= 1.0 - 0.72 * smoothstep(0.28, 1.02, length(c));
+        col += (hash(vUv * uRes + fract(uTime * 12.0)) - 0.5) * 0.06;
       }
       gl_FragColor = vec4(col, 1.0);
     }

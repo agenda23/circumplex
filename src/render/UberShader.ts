@@ -8,7 +8,7 @@ import { ShaderPass } from 'three/examples/jsm/postprocessing/ShaderPass.js';
 import { RGBShiftShader } from 'three/examples/jsm/shaders/RGBShiftShader.js';
 import { FLUX_NORM } from '../engine/audio/circumplex';
 import type { EngineState } from '../engine/types';
-import { VECTOR_SCOPE_GAIN_RANGE, type VisualFx } from '../state/visualFx';
+import { TRAIL_RANGE, VECTOR_SCOPE_GAIN_RANGE, type VisualFx } from '../state/visualFx';
 import { NOISE_UTILS, OKLCH_UTILS, SDF_PRIMITIVES } from './shaders/sdf';
 import { FINISH_SHADER } from './shaders/finish';
 
@@ -213,8 +213,8 @@ const CENTROID_NORM_HZ = 4000;
 const VECTOR_SAMPLE_COUNT = 512;
 const VECTOR_SCALE_MIN = 0.55;
 const VECTOR_SCALE_GAIN = 1.35;
-/** RGBShiftShader `amount` at chroma = 1 and full high-band/flux drive. */
-const CHROMA_AMOUNT_MAX = 0.008;
+/** RGBShiftShader `amount` at chroma = 1. High-band/flux push it the rest of the way. */
+const CHROMA_AMOUNT_MAX = 0.032;
 /** Block size in framebuffer pixels once auto-scaling reaches the 0.5 pixel-ratio floor. */
 const PIXELATE_BY_LEVEL = [0, 0, 0, 0, 4, 6, 8];
 // Z uses the left channel again, phase-shifted by this many samples, so the
@@ -424,11 +424,19 @@ export class UberShader {
   private applyPost(): void {
     const trail = this.post.trail;
     this.trailPass.enabled = trail > 0.001;
-    this.trailPass.damp = trail;
+    // The afterimage shader multiplies the ghost by damp every frame, so
+    // values under ~0.8 vanish in a couple of frames. Map the dial into the
+    // band that actually stays on screen.
+    if (this.trailPass.enabled) {
+      const t = Math.min(1, trail / TRAIL_RANGE.max);
+      this.trailPass.damp = 0.8 + Math.pow(t, 0.7) * 0.16;
+    }
 
     const high = this.material.uniforms.uHigh!.value as number;
     const flux = this.material.uniforms.uFlux!.value as number;
-    const amount = this.post.chroma * Math.max(high, flux) * CHROMA_AMOUNT_MAX;
+    const shaped = Math.pow(this.post.chroma, 1.35);
+    const drive = Math.max(high, flux);
+    const amount = shaped * (0.4 + 0.6 * drive) * CHROMA_AMOUNT_MAX;
     this.rgbPass.enabled = amount > 0.0002;
     this.rgbPass.uniforms.amount!.value = amount;
     this.rgbPass.uniforms.angle!.value = (this.material.uniforms.uTime!.value as number) * 0.15;

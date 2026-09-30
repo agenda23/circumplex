@@ -31,22 +31,48 @@ describe('Autopilot', () => {
     expect(fx.chroma).toBe(0);
   });
 
-  it('nudges one dial once the interval elapses, including while calm (no burst)', () => {
-    const ap = new Autopilot(scripted([0, 0, 0, 0.99]));
+  it('snaps one dial fully on once the interval elapses, including while calm', () => {
+    const ap = new Autopilot(scripted([0, 0, 0, 0, 0]));
     const fx = new VisualFx();
     expect(ap.update(8, -1, fx)).toBe('trail');
     expect(ap.bursting).toBe(false);
-    expect(fx.trail).toBeGreaterThan(0);
-    expect(fx.trail).toBeLessThan(0.12);
+    expect(fx.trail).toBeGreaterThanOrEqual(0.78);
+    expect(fx.trail).toBeLessThanOrEqual(0.9);
   });
 
-  it('skips a dial the operator just moved', () => {
+  it('cuts a dial off when the on-roll misses', () => {
     const ap = new Autopilot(scripted([0, 0, 0, 0.99]));
+    const fx = new VisualFx();
+    fx.trail = 0.85;
+    expect(ap.update(8, -1, fx)).toBe('trail');
+    expect(fx.trail).toBe(0);
+  });
+
+  it('leaves chroma off while calm', () => {
+    const ap = new Autopilot(scripted([0, 0, 0, 0]));
     const fx = new VisualFx();
     ap.noteManual('trail');
     expect(ap.update(8, -1, fx)).toBe('chroma');
     expect(fx.trail).toBe(0);
-    expect(fx.chroma).toBeGreaterThan(0);
+    expect(fx.chroma).toBe(0);
+  });
+
+  it('snaps chroma on only once the tier is peak', () => {
+    // Burst roll misses, then index 1 of the four dials is chroma.
+    const ap = new Autopilot(scripted([0, 0, 0.5, 0.3, 0, 0]));
+    const fx = new VisualFx();
+    expect(ap.update(8, 0.8, fx)).toBe('chroma');
+    expect(fx.chroma).toBeGreaterThanOrEqual(0.72);
+  });
+
+  it('cuts chroma as soon as the tier leaves peak', () => {
+    const ap = new Autopilot(scripted([0, 0, 0]));
+    const fx = new VisualFx();
+    fx.chroma = 1;
+    ap.update(1, 0.8, fx);
+    expect(fx.chroma).toBe(1);
+    ap.update(1, -1, fx);
+    expect(fx.chroma).toBe(0);
   });
 
   it('releases a manual hold after 90 seconds', () => {
@@ -54,11 +80,12 @@ describe('Autopilot', () => {
     // sees trail as available again and picks it (index 0, calm).
     // Two extra zeros are the shading pick and its reschedule, which fire
     // inside this same step because 90s passes the shading timer.
-    const ap = new Autopilot(scripted([0, 0, 0, 0, 0, 0.99]));
+    // The last two are the on-roll and the strong trail value.
+    const ap = new Autopilot(scripted([0, 0, 0, 0, 0, 0, 0]));
     const fx = new VisualFx();
     ap.noteManual('trail');
     expect(ap.update(MANUAL_HOLD_SEC, -1, fx)).toBe('trail');
-    expect(fx.trail).toBeGreaterThan(0);
+    expect(fx.trail).toBeGreaterThanOrEqual(0.78);
   });
 
   it('bursts trail above calm and restores it afterwards', () => {
@@ -69,8 +96,8 @@ describe('Autopilot', () => {
     expect(fx.trail).toBe(0);
 
     ap.update(0.3, 0.8, fx);
-    expect(fx.trail).toBeGreaterThan(0.15);
-    expect(fx.trail).toBeLessThan(0.35);
+    expect(fx.trail).toBeGreaterThan(0.45);
+    expect(fx.trail).toBeLessThan(0.75);
 
     ap.update(1.8, 0.8, fx);
     expect(ap.bursting).toBe(false);

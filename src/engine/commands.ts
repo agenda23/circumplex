@@ -20,6 +20,9 @@ export function reduce(state: EngineState, cmd: Command): [EngineState, Effect[]
     case 'circumplex.update':
       return [{ ...state, circumplex: cmd.circumplex, features: cmd.features }, []];
 
+    case 'scaling.update':
+      return [{ ...state, scaling: cmd.scaling }, []];
+
     case 'fps.update':
       return [{ ...state, fps: cmd.fps }, []];
 

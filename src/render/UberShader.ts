@@ -35,6 +35,8 @@ const FRAGMENT_SHADER = /* glsl */ `
   uniform float uHarmonicRichness;
   uniform float uCentroidNorm;
   uniform float uRms;
+  uniform int uMaxSteps;
+  uniform int uFbmOctaves;
 
   ${SDF_PRIMITIVES}
   ${NOISE_UTILS}
@@ -47,7 +49,7 @@ const FRAGMENT_SHADER = /* glsl */ `
     vec3 seedOffset = vec3(sin(lfoPhase), cos(lfoPhase * 0.7), sin(lfoPhase * 1.3)) * 0.6;
 
     float scale = 1.0 + uLow * 0.35;
-    float blobDisp = fbm(p * 1.8 + seedOffset) * (0.25 + uMid * 0.6);
+    float blobDisp = fbm(p * 1.8 + seedOffset, uFbmOctaves) * (0.25 + uMid * 0.6);
     float blob = sdSphere(p / scale, 1.0) * scale - blobDisp;
 
     vec3 pt = p;
@@ -73,14 +75,15 @@ const FRAGMENT_SHADER = /* glsl */ `
     ));
   }
 
-  const int MAX_STEPS = 90;
+  const int MAX_STEPS_BOUND = 90;
   const float MAX_DIST = 20.0;
   const float SURF_DIST = 0.0015;
 
   float raymarch(vec3 ro, vec3 rd, out bool hit) {
     float t = 0.0;
     hit = false;
-    for (int i = 0; i < MAX_STEPS; i++) {
+    for (int i = 0; i < MAX_STEPS_BOUND; i++) {
+      if (i >= uMaxSteps) break;
       vec3 p = ro + rd * t;
       float d = map(p);
       if (d < SURF_DIST) { hit = true; break; }
@@ -133,11 +136,33 @@ function clamp01(v: number): number {
   return Math.min(1, Math.max(0, v));
 }
 
+// PRD §4.2: resolution drops first (levels 0-3 only touch pixelRatio, down
+// to a 0.5 floor); only once that floor is reached do further levels also
+// cut raymarch step count / noise octaves.
+interface RenderQuality {
+  pixelRatio: number | 'device';
+  maxSteps: number;
+  fbmOctaves: number;
+}
+
+const RENDER_QUALITY: RenderQuality[] = [
+  { pixelRatio: 'device', maxSteps: 90, fbmOctaves: 4 },
+  { pixelRatio: 1, maxSteps: 90, fbmOctaves: 4 },
+  { pixelRatio: 0.75, maxSteps: 90, fbmOctaves: 4 },
+  { pixelRatio: 0.5, maxSteps: 90, fbmOctaves: 4 },
+  { pixelRatio: 0.5, maxSteps: 60, fbmOctaves: 3 },
+  { pixelRatio: 0.5, maxSteps: 45, fbmOctaves: 2 },
+  { pixelRatio: 0.5, maxSteps: 30, fbmOctaves: 2 },
+];
+
 export class UberShader {
   private readonly composer: EffectComposer;
   private readonly bloomPass: UnrealBloomPass;
   private readonly material: THREE.ShaderMaterial;
   private readonly startTime = performance.now();
+  private readonly devicePixelRatioCap = Math.min(window.devicePixelRatio || 1, 2);
+  private width = 1;
+  private height = 1;
 
   constructor(private readonly renderer: THREE.WebGLRenderer) {
     this.material = new THREE.ShaderMaterial({
@@ -154,6 +179,8 @@ export class UberShader {
         uHarmonicRichness: { value: 0 },
         uCentroidNorm: { value: 0 },
         uRms: { value: 0 },
+        uMaxSteps: { value: RENDER_QUALITY[0]!.maxSteps },
+        uFbmOctaves: { value: RENDER_QUALITY[0]!.fbmOctaves },
       },
     });
 
@@ -182,10 +209,31 @@ export class UberShader {
   }
 
   resize(width: number, height: number): void {
-    this.renderer.setSize(width, height);
-    this.composer.setSize(width, height);
-    this.bloomPass.setSize(width, height);
-    this.material.uniforms.uResolution!.value.set(width, height);
+    this.width = width;
+    this.height = height;
+    this.applySize();
+  }
+
+  /** Applies a PRD §4.2 auto-scaling level (0 = best quality). */
+  setQuality(level: number): { pixelRatio: number } {
+    const clamped = Math.min(Math.max(level, 0), RENDER_QUALITY.length - 1);
+    const quality = RENDER_QUALITY[clamped]!;
+    const pixelRatio = quality.pixelRatio === 'device' ? this.devicePixelRatioCap : quality.pixelRatio;
+
+    this.renderer.setPixelRatio(pixelRatio);
+    this.composer.setPixelRatio(pixelRatio);
+    this.material.uniforms.uMaxSteps!.value = quality.maxSteps;
+    this.material.uniforms.uFbmOctaves!.value = quality.fbmOctaves;
+    this.applySize();
+
+    return { pixelRatio };
+  }
+
+  private applySize(): void {
+    this.renderer.setSize(this.width, this.height);
+    this.composer.setSize(this.width, this.height);
+    this.bloomPass.setSize(this.width, this.height);
+    this.material.uniforms.uResolution!.value.set(this.width, this.height);
   }
 
   render(): void {

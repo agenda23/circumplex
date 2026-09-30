@@ -49,10 +49,14 @@ export const NOISE_UTILS = /* glsl */ `
     );
   }
 
-  float fbm(vec3 p) {
+  // Loop keeps a compile-time bound (matching the highest octave count the
+  // auto-scaling ladder ever requests) with a runtime break, rather than
+  // relying on a uniform-bounded loop -- safer across WebGL2 drivers.
+  float fbm(vec3 p, int octaves) {
     float sum = 0.0;
     float amp = 0.5;
     for (int i = 0; i < 4; i++) {
+      if (i >= octaves) break;
       sum += amp * valueNoise3(p);
       p *= 2.02;
       amp *= 0.5;

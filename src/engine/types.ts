@@ -9,6 +9,11 @@ export interface CircumplexPoint {
   arousal: number;
 }
 
+export interface ScalingState {
+  level: number;
+  pixelRatio: number;
+}
+
 export interface MirFeatures {
   rms: number;
   centroid: number;
@@ -31,6 +36,7 @@ export interface EngineState {
   levels: BandLevels;
   circumplex: CircumplexPoint;
   features: MirFeatures;
+  scaling: ScalingState;
   fps: number;
   error: string | null;
 }
@@ -42,6 +48,7 @@ export function createInitialState(): EngineState {
     levels: { low: 0, mid: 0, high: 0 },
     circumplex: { valence: 0, arousal: 0 },
     features: createInitialFeatures(),
+    scaling: { level: 0, pixelRatio: 1 },
     fps: 0,
     error: null,
   };
@@ -52,6 +59,7 @@ export type Command =
   | { type: 'session.stop' }
   | { type: 'levels.update'; levels: BandLevels }
   | { type: 'circumplex.update'; circumplex: CircumplexPoint; features: MirFeatures }
+  | { type: 'scaling.update'; scaling: ScalingState }
   | { type: 'fps.update'; fps: number }
   | { type: 'audio.error'; message: string };
 
